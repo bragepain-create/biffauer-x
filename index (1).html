@@ -1,0 +1,2228 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BIFFAUER X</title>
+<meta name="theme-color" content="#010409">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; overflow: hidden; }
+  #root { width: 100vw; height: 100vh; }
+  #error { color: #ef5350; padding: 20px; font-family: monospace; white-space: pre-wrap; display: none; }
+</style>
+</head>
+<body>
+<div id="error"></div>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.4/babel.min.js"></script>
+<script>
+// Storage polyfill
+if (!window.storage) {
+  try {
+    window.storage = {
+      get: async function(key) { var v = localStorage.getItem('bx_'+key); if(!v) throw new Error('not found'); return {key:key, value: v}; },
+      set: async function(key, value) { localStorage.setItem('bx_'+key, value); return {key:key, value: value}; },
+      delete: async function(key) { localStorage.removeItem('bx_'+key); return {key:key, deleted: true}; },
+      list: async function(prefix) { var keys = []; for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k.indexOf('bx_'+(prefix||''))===0)keys.push(k.replace('bx_',''));} return {keys:keys}; }
+    };
+  } catch(e) {
+    var store = {};
+    window.storage = {
+      get: async function(key) { if(!store[key]) throw new Error('not found'); return {key:key, value: store[key]}; },
+      set: async function(key, value) { store[key] = value; return {key:key, value: value}; },
+      delete: async function(key) { delete store[key]; return {key:key, deleted: true}; },
+      list: async function(prefix) { return {keys: Object.keys(store).filter(function(k){ return !prefix || k.indexOf(prefix)===0; })}; }
+    };
+  }
+}
+</script>
+<script type="text/babel" data-type="module">
+const {useState, useEffect, useCallback, useRef, useMemo} = React;
+
+
+const W=900,H=600,GY=470,CX=130,FH=32;
+const D=(a,b,c,d)=>Math.sqrt((c-a)**2+(d-b)**2);
+const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rn=(a,b)=>a+Math.random()*(b-a);
+const pk=a=>a[~~(Math.random()*a.length)];
+
+/* ═══════ ERAS ═══════ */
+const ERAS=[
+  {name:"Primitiv",icon:"🦴",waves:[1,10],col:"#8d6e63"},
+  {name:"Steinalder",icon:"🪨",waves:[10,20],col:"#795548"},
+  {name:"Krutt & Kuler",icon:"🔫",waves:[20,30],col:"#546e7a"},
+  {name:"Militær Makt",icon:"💣",waves:[30,40],col:"#d50000"},
+  {name:"Teknologi",icon:"⚡",waves:[40,999],col:"#7c4dff"},
+];
+const getEra=w=>{for(let i=ERAS.length-1;i>=0;i--)if(w>=ERAS[i].waves[0])return i;return 0;};
+
+/* ═══════ WEAPONS ═══════ */
+const WPNS={
+  fist:{d:3,r:25,rt:20,am:99,m:1},bite:{d:4,r:22,rt:18,am:99,m:1},claw:{d:5,r:28,rt:22,am:99,m:1},
+  headbutt:{d:6,r:26,rt:30,am:99,m:1},kick:{d:4,r:30,rt:24,am:99,m:1},spit:{d:2,r:60,rt:35,am:20,sp:3},
+  club:{d:8,r:32,rt:28,am:99,m:1},spear:{d:7,r:45,rt:35,am:99,m:1},sling:{d:6,r:160,rt:40,am:18,sp:5},
+  torch:{d:7,r:30,rt:25,am:99,m:1,dot:2},axe_stone:{d:10,r:34,rt:32,am:99,m:1},javelin:{d:9,r:170,rt:50,am:8,sp:6},
+  bone_club:{d:9,r:30,rt:26,am:99,m:1},rock_throw:{d:8,r:140,rt:45,am:12,sp:4,spl:20},
+  // Era 2 guns
+  pistol:{d:14,r:220,rt:35,am:12,sp:12},rifle:{d:20,r:300,rt:50,am:10,sp:14},
+  shotgun:{d:18,r:120,rt:55,am:8,sp:10,spl:35},grenade:{d:25,r:180,rt:70,am:5,sp:5,spl:50},
+  sword:{d:12,r:35,rt:22,am:99,m:1},dynamite:{d:30,r:150,rt:80,am:3,sp:4,spl:60},
+  crossbow:{d:16,r:260,rt:45,am:12,sp:9},molotov:{d:10,r:140,rt:60,am:6,sp:5,spl:40,dot:4},
+  revolver:{d:18,r:200,rt:30,am:6,sp:13},musket_w:{d:28,r:280,rt:75,am:6,sp:11},
+  blunderbuss:{d:24,r:100,rt:60,am:5,sp:8,spl:45},bayonet:{d:14,r:35,rt:20,am:99,m:1},
+  cannon_ball:{d:35,r:250,rt:90,am:4,sp:6,spl:55},flintlock:{d:16,r:180,rt:40,am:8,sp:12},
+  // Era 3 military
+  ak47:{d:12,r:280,rt:8,am:30,sp:16},sniper_r:{d:45,r:450,rt:80,am:8,sp:20},
+  rpg:{d:50,r:300,rt:90,am:4,sp:8,spl:65},minigun:{d:8,r:250,rt:4,am:60,sp:14},
+  flamethrower:{d:6,r:100,rt:6,am:50,sp:3,spl:30,dot:5},tank_gun:{d:60,r:350,rt:70,am:99,sp:10,spl:55},
+  mortar:{d:40,r:400,rt:85,am:10,sp:6,spl:70},smg:{d:10,r:200,rt:6,am:40,sp:14},
+  bazooka:{d:55,r:320,rt:85,am:3,sp:7,spl:70},m60:{d:10,r:300,rt:5,am:80,sp:15},
+  stinger:{d:40,r:400,rt:50,am:6,sp:22},c4:{d:80,r:60,rt:120,am:2,sp:0,spl:90},
+  desert_eagle:{d:25,r:250,rt:25,am:10,sp:16},airstrike:{d:70,r:500,rt:110,am:2,sp:0,spl:100},
+  napalm:{d:15,r:200,rt:80,am:4,sp:5,spl:60,dot:8},gatling_w:{d:6,r:280,rt:3,am:100,sp:14},
+  catapult_w:{d:20,r:250,rt:90,am:99,sp:4,spl:45},ram_w:{d:15,r:35,rt:40,am:99,m:1},
+  laser:{d:30,r:400,rt:15,am:99,sp:25},plasma:{d:40,r:350,rt:25,am:99,sp:18,spl:45},
+  railgun:{d:80,r:500,rt:60,am:99,sp:30},emp:{d:15,r:300,rt:40,am:99,sp:20,stn:60,spl:80},
+  disruptor:{d:25,r:280,rt:20,am:99,sp:22,sl:80},nova:{d:100,r:200,rt:100,am:99,sp:0,spl:120},
+  nanobots:{d:5,r:150,rt:10,am:99,sp:15,dot:8},gravity:{d:35,r:250,rt:30,am:99,sp:12,spl:60},
+  antimatter:{d:120,r:400,rt:120,am:3,sp:8,spl:100},
+  herb:{d:0,r:80,rt:40,am:99,sp:3,hl:6},potion:{d:0,r:100,rt:35,am:12,sp:4,hl:10},
+  medkit:{d:0,r:120,rt:30,am:8,sp:5,hl:18},field_med:{d:0,r:150,rt:25,am:15,sp:6,hl:25},
+  nanoheal:{d:0,r:200,rt:15,am:99,sp:10,hl:40},
+  // Magic weapons (monster mages)
+  fireball:{d:15,r:200,rt:50,am:10,sp:6,spl:35,dot:3},hex:{d:8,r:180,rt:40,am:15,sp:5,sl:100},
+  lightning_bolt:{d:22,r:250,rt:45,am:8,sp:12},dark_bolt:{d:18,r:220,rt:35,am:12,sp:8,dot:4},
+  frost_blast:{d:12,r:190,rt:55,am:10,sp:5,spl:40,sl:120},arcane_missile:{d:10,r:240,rt:20,am:20,sp:10},
+  shadow_orb:{d:20,r:200,rt:40,am:10,sp:7,dot:5},holy_smite:{d:25,r:230,rt:50,am:8,sp:9},
+  nature_bolt:{d:10,r:160,rt:35,am:15,sp:5,hl:5},venom_spray:{d:8,r:120,rt:30,am:20,sp:4,spl:30,dot:6},
+  mind_blast:{d:30,r:200,rt:60,am:6,sp:8,stn:40},chaos_bolt:{d:35,r:280,rt:55,am:6,sp:11,spl:45},
+  plasma_bolt:{d:28,r:300,rt:30,am:15,sp:15},void_ray:{d:40,r:350,rt:50,am:8,sp:18,dot:6},
+};
+
+/* ═══════ MONSTER RACES ═══════ */
+const RACES={
+  rat:{hp:8,spd:2,w:12,h:10,r:3,c:"#9e9e9e",era:0,wpns:["bite","claw"],t:"swarm"},
+  wolf:{hp:18,spd:1.8,w:20,h:16,r:5,c:"#78909c",era:0,wpns:["bite","claw"],t:"fast"},
+  goblin:{hp:15,spd:1.5,w:16,h:22,r:5,c:"#4caf50",era:0,wpns:["fist","kick","spit"],t:"basic"},
+  troll_p:{hp:50,spd:0.6,w:38,h:48,r:12,c:"#33691e",era:0,wpns:["fist","headbutt"],t:"tank"},
+  shaman_p:{hp:12,spd:0.8,w:16,h:22,r:4,c:"#66bb6a",era:0,wpns:["herb"],t:"healer"},
+  fire_imp:{hp:14,spd:1.3,w:14,h:18,r:5,c:"#ff6f00",era:0,wpns:["fireball","torch"],t:"mage"},
+  hex_toad:{hp:18,spd:0.7,w:16,h:14,r:6,c:"#8bc34a",era:0,wpns:["hex","venom_spray"],t:"mage"},
+  warrior:{hp:35,spd:1.1,w:20,h:26,r:10,c:"#8d6e63",era:1,wpns:["club","spear","axe_stone"],t:"basic"},
+  hunter:{hp:25,spd:1.4,w:18,h:24,r:8,c:"#a1887f",era:1,wpns:["sling","javelin","rock_throw"],t:"ranged"},
+  berserker_m:{hp:45,spd:1.3,w:28,h:34,r:14,c:"#d84315",era:1,wpns:["axe_stone","bone_club","torch"],t:"elite"},
+  mammoth:{hp:120,spd:0.35,w:56,h:48,r:30,c:"#6d4c41",era:1,wpns:["headbutt","kick"],t:"tank"},
+  catapult_m:{hp:80,spd:0.25,w:44,h:32,r:25,c:"#795548",era:1,wpns:["catapult_w","rock_throw"],t:"siege"},
+  witchdoc:{hp:20,spd:0.7,w:18,h:24,r:7,c:"#81c784",era:1,wpns:["potion","herb"],t:"healer"},
+  frost_shaman:{hp:22,spd:0.8,w:18,h:24,r:8,c:"#4fc3f7",era:1,wpns:["frost_blast","hex"],t:"mage"},
+  dark_druid:{hp:28,spd:0.6,w:20,h:26,r:10,c:"#4a148c",era:1,wpns:["dark_bolt","nature_bolt"],t:"mage"},
+  fire_dancer:{hp:20,spd:1.4,w:16,h:22,r:7,c:"#ff5722",era:1,wpns:["fireball","molotov"],t:"mage"},
+  // ERA 2: KRUTT (20-30) — Cowboys, banditter, pirater med pistoler/rifler
+  gunner:{hp:40,spd:1.0,w:20,h:26,r:15,c:"#546e7a",era:2,wpns:["pistol","rifle","shotgun"],t:"ranged"},
+  bomber:{hp:35,spd:0.9,w:22,h:26,r:18,c:"#ff8f00",era:2,wpns:["grenade","dynamite","molotov"],t:"splash"},
+  knight_m:{hp:70,spd:0.8,w:24,h:30,r:20,c:"#b0bec5",era:2,wpns:["sword","crossbow","bayonet"],t:"elite"},
+  cannon_m:{hp:100,spd:0.3,w:46,h:32,r:35,c:"#455a64",era:2,wpns:["cannon_ball","dynamite"],t:"siege"},
+  medic_g:{hp:30,spd:0.9,w:18,h:24,r:10,c:"#e91e63",era:2,wpns:["medkit","pistol"],t:"healer"},
+  warlock_m:{hp:35,spd:0.7,w:20,h:26,r:14,c:"#7b1fa2",era:2,wpns:["shadow_orb","dark_bolt","hex"],t:"mage"},
+  alchemist_m:{hp:28,spd:0.9,w:18,h:24,r:12,c:"#ffc107",era:2,wpns:["venom_spray","fireball","molotov"],t:"mage"},
+  battle_priest:{hp:40,spd:0.6,w:20,h:28,r:15,c:"#fff176",era:2,wpns:["holy_smite","lightning_bolt"],t:"mage"},
+  outlaw:{hp:35,spd:1.4,w:18,h:26,r:12,c:"#6d4c41",era:2,wpns:["revolver","revolver","shotgun"],t:"fast"},
+  musketman:{hp:50,spd:0.8,w:20,h:28,r:16,c:"#78909c",era:2,wpns:["musket_w","bayonet"],t:"ranged"},
+  pirate:{hp:55,spd:1.1,w:22,h:28,r:18,c:"#d32f2f",era:2,wpns:["flintlock","sword","blunderbuss"],t:"basic"},
+  cannoneer:{hp:90,spd:0.4,w:40,h:30,r:28,c:"#37474f",era:2,wpns:["cannon_ball","grenade"],t:"siege"},
+  duelist_m:{hp:30,spd:1.6,w:16,h:26,r:10,c:"#ffd54f",era:2,wpns:["revolver","sword"],t:"fast"},
+  // ERA 3: MILITÆR (30-40) — Soldater, tanks, helikoptre med maskingevær/bazooka
+  soldier:{hp:60,spd:1.2,w:20,h:26,r:20,c:"#37474f",era:3,wpns:["ak47","smg","sniper_r"],t:"ranged"},
+  heavy:{hp:100,spd:0.7,w:26,h:30,r:30,c:"#263238",era:3,wpns:["minigun","flamethrower","rpg"],t:"elite"},
+  tank_m:{hp:300,spd:0.3,w:62,h:38,r:50,c:"#4e342e",era:3,wpns:["tank_gun","mortar"],t:"siege"},
+  heli:{hp:80,spd:1.5,w:44,h:26,r:35,c:"#607d8b",era:3,wpns:["ak47","rpg"],t:"fly"},
+  combat_med:{hp:45,spd:1.0,w:20,h:26,r:15,c:"#f06292",era:3,wpns:["field_med","smg"],t:"healer"},
+  psi_operative:{hp:40,spd:1.1,w:18,h:26,r:18,c:"#ce93d8",era:3,wpns:["mind_blast","arcane_missile"],t:"mage"},
+  chaos_mage:{hp:55,spd:0.7,w:22,h:28,r:22,c:"#9c27b0",era:3,wpns:["chaos_bolt","shadow_orb","lightning_bolt"],t:"mage"},
+  flame_trooper:{hp:50,spd:0.9,w:20,h:26,r:16,c:"#e65100",era:3,wpns:["fireball","flamethrower","napalm"],t:"mage"},
+  commando:{hp:75,spd:1.5,w:20,h:28,r:25,c:"#1b5e20",era:3,wpns:["ak47","desert_eagle","c4"],t:"elite"},
+  rocketeer:{hp:55,spd:0.9,w:22,h:28,r:22,c:"#e65100",era:3,wpns:["bazooka","rpg","stinger"],t:"splash"},
+  sniper_m:{hp:35,spd:0.6,w:18,h:26,r:15,c:"#455a64",era:3,wpns:["sniper_r","desert_eagle"],t:"ranged"},
+  gunship:{hp:150,spd:1.2,w:52,h:30,r:45,c:"#37474f",era:3,wpns:["gatling_w","rpg","napalm"],t:"fly"},
+  juggernaut_m:{hp:250,spd:0.5,w:32,h:36,r:40,c:"#212121",era:3,wpns:["m60","flamethrower"],t:"tank"},
+  apc:{hp:180,spd:0.8,w:48,h:28,r:35,c:"#33691e",era:3,wpns:["m60","mortar"],t:"siege"},
+  bomber_plane:{hp:60,spd:2.0,w:46,h:20,r:30,c:"#455a64",era:3,wpns:["airstrike","napalm"],t:"fly"},
+  drone:{hp:40,spd:2.5,w:18,h:14,r:20,c:"#7c4dff",era:4,wpns:["laser","emp"],t:"fast"},
+  mech:{hp:250,spd:0.6,w:44,h:56,r:60,c:"#424242",era:4,wpns:["plasma","railgun","gravity"],t:"elite"},
+  mothership:{hp:600,spd:0.15,w:74,h:44,r:80,c:"#311b92",era:4,wpns:["nova","antimatter","plasma"],t:"tank"},
+  swarm_bot:{hp:15,spd:3,w:12,h:12,r:8,c:"#00e5ff",era:4,wpns:["laser","nanobots"],t:"swarm"},
+  cyber_med:{hp:60,spd:1.2,w:20,h:26,r:25,c:"#e040fb",era:4,wpns:["nanoheal","disruptor"],t:"healer"},
+  techno_mage:{hp:70,spd:0.9,w:22,h:28,r:30,c:"#7c4dff",era:4,wpns:["plasma_bolt","void_ray","arcane_missile"],t:"mage"},
+  void_caster:{hp:50,spd:1.0,w:20,h:26,r:22,c:"#311b92",era:4,wpns:["void_ray","chaos_bolt","mind_blast"],t:"mage"},
+  titan:{hp:500,spd:0.4,w:52,h:66,r:70,c:"#1a237e",era:4,wpns:["railgun","nova"],t:"boss"},
+};
+
+/* ═══════ HEROES ═══════ */
+const HEROES={
+  // ═══════ BUE (Ranged Physical) ═══════
+  archer:{n:"Bueskytter",cls:"bue",cost:30,dmg:8,rng:300,fr:36,t:"r",c:"#66bb6a",ps:9,pc:"#a5d6a7",um:1,desc:"Rask og billig",
+    dia:["🏹 Lyn-bue: 2x fart","🎯 Gift-pil: +poison"],spec:{n:"Pilregn",cd:600,desc:"10 piler på en gang"}},
+  ranger:{n:"Jeger",cls:"bue",cost:30,dmg:10,rng:320,fr:32,t:"r",c:"#558b2f",ps:10,pc:"#aed581",um:1,desc:"Dobbeltskudd",
+    dia:["🏹 Trippelskudd","🎯 Crit +30%"],spec:{n:"Regn av piler",cd:650,desc:"15 piler spredt"}},
+  hunter_h:{n:"Skogvokter",cls:"bue",cost:30,dmg:9,rng:340,fr:30,t:"r",c:"#2e7d32",ps:10,pc:"#66bb6a",um:1,desc:"Rask dobbel",
+    dia:["🌿 Giftpil","🏹 Trippelskudd"],spec:{n:"Felle",cd:600,desc:"Trap som slower"}},
+  blowgunner:{n:"Blåserør",cls:"bue",cost:30,dmg:5,rng:280,fr:22,t:"r",c:"#4db6ac",ps:12,pc:"#80cbc4",um:1,desc:"Rask gift",
+    dia:["🐍 Megagift","💨 Dødspust"],spec:{n:"Giftsky",cd:550,desc:"DOT alle 5s"}},
+  marksman:{n:"Skarpskytt",cls:"bue",cost:35,dmg:13,rng:360,fr:40,t:"r",c:"#81c784",ps:11,pc:"#a5d6a7",um:1,desc:"Stabil sikte",
+    dia:["🎯 Headshot","💨 Vindskudd"],spec:{n:"Konsentrert",cd:600,desc:"3x dmg 3 sek"}},
+  poison_archer:{n:"Giftskytter",cls:"bue",cost:35,dmg:6,rng:300,fr:28,t:"r",c:"#1b5e20",ps:10,pc:"#4caf50",um:1,desc:"Alt er giftig",
+    dia:["🐍 Dødelig gift","💀 Nekrose"],spec:{n:"Giftregn",cd:650,desc:"DOT på alle 6s"}},
+  crossbow_h:{n:"Armbrøst",cls:"bue",cost:40,dmg:14,rng:350,fr:50,t:"r",c:"#8d6e63",ps:11,pc:"#bcaaa4",um:1,desc:"Tung bolt",
+    dia:["⚡ Eksplosiv bolt: +splash","🛡 Panserbolt: 2x dmg"],spec:{n:"Gjennomboring",cd:700,desc:"Bolt gjennom alle"}},
+  repeater:{n:"Repeater",cls:"bue",cost:40,dmg:7,rng:310,fr:12,t:"r",c:"#78909c",ps:14,pc:"#b0bec5",um:1,desc:"Superrask skudd",
+    dia:["⚡ Turbo","🔥 Brannskudd"],spec:{n:"Megasalve",cd:550,desc:"20 skudd på 2s"}},
+  musketeer:{n:"Musketér",cls:"bue",cost:45,dmg:18,rng:380,fr:65,t:"r",c:"#5d4037",ps:13,pc:"#a1887f",um:1,desc:"Tung kule",
+    dia:["💥 Kanonskudd: splash","⚡ Rask lading"],spec:{n:"Bajonett",cd:600,desc:"Melee burst dmg"}},
+  javelin:{n:"Spydkaster",cls:"bue",cost:45,dmg:16,rng:370,fr:55,t:"r",c:"#8d6e63",ps:12,pc:"#bcaaa4",um:1,desc:"Tungt kast",
+    dia:["🗡 Eksplosivt spyd","⚡ Lynkast"],spec:{n:"Regnspyd",cd:700,desc:"8 spyd fra himmel"}},
+  sharpshooter:{n:"Skarpskytter",cls:"bue",cost:45,dmg:15,rng:400,fr:55,t:"r",c:"#9ccc65",ps:12,pc:"#c5e1a5",um:1,desc:"Lang presisjon",
+    dia:["🎯 Perfekt sikte","💥 Panserbryter"],spec:{n:"Fokusert skudd",cd:700,desc:"4x dmg neste skudd"}},
+  sniper:{n:"Snikskytter",cls:"bue",cost:55,dmg:30,rng:470,fr:100,t:"r",c:"#fdd835",ps:15,pc:"#fff9c4",um:1,desc:"Mega rekkevidde",
+    dia:["💀 Headshot: 3x dmg","⚡ Rask lader: 3x fart"],spec:{n:"Dødsskudd",cd:800,desc:"Instant-kill 1 fiende"}},
+  turret:{n:"Tårnskytter",cls:"bue",cost:55,dmg:12,rng:400,fr:8,t:"r",c:"#455a64",ps:16,pc:"#90a4ae",um:1,desc:"Auto-skytter",
+    dia:["⚡ Overclocked","🎯 Laser-sikte"],spec:{n:"Lockdown",cd:700,desc:"5x fart 4 sek"}},
+  gatling:{n:"Gatling",cls:"bue",cost:60,dmg:8,rng:280,fr:6,t:"r",c:"#78909c",ps:14,pc:"#cfd8dc",um:1,desc:"Ekstremt rask",
+    dia:["🔥 Overcharge: 2x fart","💥 Eksplosiv: +splash"],spec:{n:"Overcharge",cd:600,desc:"3x fart i 5 sek"}},
+  bombardier:{n:"Bombardér",cls:"bue",cost:60,dmg:35,rng:320,fr:80,t:"r",c:"#e65100",ps:7,pc:"#ffab40",spl:50,um:1,desc:"Bomber",
+    dia:["💣 Klyngebombe","🔥 Napalm: +DOT"],spec:{n:"Teppebombing",cd:900,desc:"8 eksplosjoner"}},
+  ballista:{n:"Ballista",cls:"bue",cost:65,dmg:40,rng:420,fr:95,t:"r",c:"#795548",ps:7,pc:"#a1887f",spl:55,um:1,desc:"Seigebeleirings",
+    dia:["💥 Splinterbolt","🔥 Brannskudd"],spec:{n:"Megabolt",cd:900,desc:"En bolt 5x dmg"}},
+  artillery:{n:"Artilleri",cls:"bue",cost:70,dmg:45,rng:450,fr:110,t:"r",c:"#e65100",ps:6,pc:"#ff9800",spl:70,um:1,desc:"Mega splash",
+    dia:["💣 Napalm","⚡ Rakett-lader"],spec:{n:"Barrage",cd:1000,desc:"10 eksplosjoner"}},
+  // ═══════ MAGI (Ranged Magic) ═══════
+  druid:{n:"Druide",cls:"magi",cost:35,dmg:10,rng:250,fr:40,t:"r",c:"#33691e",ps:5,pc:"#81c784",healAmt:6,um:1,desc:"Heal+Dmg",
+    dia:["🌿 Naturkraft","🌳 Livstre: mega heal"],spec:{n:"Naturvrede",cd:700,desc:"Heal+dmg alle"}},
+  nature_mage:{n:"Naturmage",cls:"magi",cost:35,dmg:8,rng:260,fr:42,t:"r",c:"#2e7d32",ps:6,pc:"#66bb6a",slow:90,um:1,desc:"Rotvekst+slow",
+    dia:["🌿 Rotfelle","🌳 Skogvegg"],spec:{n:"Skogvrede",cd:750,desc:"Rotvekst fanger alle"}},
+  wizard:{n:"Trollmann",cls:"magi",cost:40,dmg:18,rng:270,fr:65,t:"r",c:"#42a5f5",ps:5,pc:"#90caf9",spl:45,um:1,desc:"Splash magi",
+    dia:["❄ Frostmester: +freeze","🔥 Ildstorm: 2x splash"],spec:{n:"Meteor",cd:900,desc:"Massiv eksplosjon"}},
+  pyromancer:{n:"Pyromant",cls:"magi",cost:40,dmg:16,rng:250,fr:50,t:"r",c:"#ff3d00",ps:6,pc:"#ff8a65",spl:40,um:1,desc:"Ildmagi",
+    dia:["🔥 Infernoball","🌋 Lavafelt: DOT"],spec:{n:"Ildstorm",cd:800,desc:"Alt brenner 5 sek"}},
+  frost_mage:{n:"Frostmage",cls:"magi",cost:45,dmg:12,rng:280,fr:45,t:"r",c:"#4dd0e1",ps:7,pc:"#80deea",slow:120,um:1,desc:"Fryser fiender",
+    dia:["❄ Dypfrys: +stun","🧊 Isvegger"],spec:{n:"Blizzard",cd:800,desc:"Frys alle 3 sek"}},
+  necro:{n:"Nekromant",cls:"magi",cost:45,dmg:14,rng:280,fr:55,t:"r",c:"#7e57c2",ps:6,pc:"#b39ddb",drain:1,um:1,desc:"Stjeler HP",
+    dia:["💀 Dødsmester: 3x drain","🧟 Zombie: +splash"],spec:{n:"Sjelstorm",cd:800,desc:"Drain alle fiender"}},
+  illusionist:{n:"Illusjonist",cls:"magi",cost:50,dmg:15,rng:260,fr:45,t:"r",c:"#ec407a",ps:6,pc:"#f48fb1",um:1,desc:"Forvirrer fiender",
+    dia:["🌀 Masseillusjon","💫 Speilbilder"],spec:{n:"Massekopi",cd:800,desc:"Fiender angriper seg"}},
+  lightning_m:{n:"Lynmage",cls:"magi",cost:50,dmg:20,rng:320,fr:45,t:"r",c:"#ffee58",ps:18,pc:"#fff9c4",chain:3,um:1,desc:"Kjede-lyn",
+    dia:["⚡ Tordengud: chain 8","🌩 Stormfelt: +stun"],spec:{n:"Tordenstorm",cd:700,desc:"Lyn på alle fiender"}},
+  storm_mage:{n:"Stormmage",cls:"magi",cost:50,dmg:20,rng:300,fr:50,t:"r",c:"#1565c0",ps:10,pc:"#64b5f6",chain:2,um:1,desc:"Lyn og torden",
+    dia:["⚡ Tornadoskade","🌩 Tordenstorm"],spec:{n:"Lynregn",cd:750,desc:"Lyn på alle 4s"}},
+  summoner:{n:"Påkaller",cls:"magi",cost:55,dmg:14,rng:240,fr:55,t:"r",c:"#6a1b9a",ps:5,pc:"#ce93d8",um:1,desc:"Kaller skapninger",
+    dia:["🐉 Drage","👻 Spøkelse-hær"],spec:{n:"Påkall demon",cd:900,desc:"Mega-skapning 8s"}},
+  shadow_caster:{n:"Skyggekaster",cls:"magi",cost:55,dmg:22,rng:290,fr:50,t:"r",c:"#263238",ps:7,pc:"#546e7a",um:1,desc:"Mørk magi",
+    dia:["🌑 Skyggebolt","💀 Mørkesfære"],spec:{n:"Evig natt",cd:850,desc:"-50% fiende dmg 5s"}},
+  warlock:{n:"Heksemester",cls:"magi",cost:55,dmg:25,rng:300,fr:65,t:"r",c:"#4a148c",ps:8,pc:"#ce93d8",um:1,desc:"Mørk magi",
+    dia:["💀 Forbannelse","🌀 Kaos-portal"],spec:{n:"Dødsforbannelse",cd:900,desc:"-50% HP alle"}},
+  blood_mage:{n:"Blodmage",cls:"magi",cost:55,dmg:24,rng:270,fr:55,t:"r",c:"#b71c1c",ps:7,pc:"#ef9a9a",drain:1,um:1,desc:"Blodmagi",
+    dia:["🩸 Blodflom","💀 Livstapper"],spec:{n:"Blodpakt",cd:850,desc:"Drain 30% alle"}},
+  tesla:{n:"Tesla",cls:"magi",cost:60,dmg:25,rng:300,fr:55,t:"r",c:"#00e5ff",ps:20,pc:"#84ffff",chain:5,um:1,desc:"Elektro-kjede",
+    dia:["⚡ MegaTesla: chain 10","🧲 EMP-felt: +stun alle"],spec:{n:"EMP-bombe",cd:900,desc:"Stun alle 3 sek"}},
+  elementalist:{n:"Elementalist",cls:"magi",cost:60,dmg:22,rng:290,fr:48,t:"r",c:"#f50057",ps:8,pc:"#ff80ab",spl:40,um:1,desc:"Veksler element",
+    dia:["🔥 Ild+Is","⚡ Lyn+Jord"],spec:{n:"Elementstorm",cd:850,desc:"Alle elementer!"}},
+  void_mage:{n:"Tomromsmage",cls:"magi",cost:65,dmg:28,rng:280,fr:58,t:"r",c:"#1a237e",ps:8,pc:"#5c6bc0",spl:50,um:1,desc:"Dimensjonsmagi",
+    dia:["🌀 Svart hull","⚡ Void blast"],spec:{n:"Dimensjonsrift",cd:900,desc:"Sluker fiender"}},
+  chronomancer:{n:"Tidsmage",cls:"magi",cost:65,dmg:18,rng:260,fr:38,t:"r",c:"#00bcd4",ps:9,pc:"#80deea",um:1,desc:"Sakker tid",
+    dia:["⏳ Tidsstopp","🔄 Spol tilbake"],spec:{n:"Tidsfrys",cd:900,desc:"Frys alle 4 sek"}},
+  thunder_god:{n:"Tordengud",cls:"magi",cost:75,dmg:35,rng:350,fr:65,t:"r",c:"#ffd600",ps:15,pc:"#fff9c4",chain:6,um:1,desc:"MEGA lynkjede",
+    dia:["⚡ Guddomslyn","🌩 Kosmisk storm"],spec:{n:"Ragnarok",cd:1000,desc:"Alt lyner 5s"}},
+  dragon:{n:"Drage",cls:"magi",cost:80,dmg:40,rng:380,fr:75,t:"r",c:"#d32f2f",ps:10,pc:"#ef9a9a",spl:80,um:1,desc:"ILDDRAGE!",
+    dia:["🐉 Eldstrøm","🔥 Drageraseri"],spec:{n:"Drakepust",cd:1000,desc:"Mega ild-AOE alt"}},
+  // ═══════ ANGREP (Melee Offense) ═══════
+  barbarian:{n:"Barbar",cls:"angrep",cost:30,dmg:18,rng:50,fr:28,t:"m",c:"#4e342e",hp:95,spd:1.9,um:1,rsp:550,desc:"Vill og sterk",
+    dia:["🪓 Rasende øks","💪 Primal kraft"],spec:{n:"Primalskrik",cd:650,desc:"Fear alle 3s"}},
+  swashbuckler:{n:"Sverdsvinger",cls:"angrep",cost:30,dmg:15,rng:42,fr:22,t:"m",c:"#f4511e",hp:70,spd:2.1,um:1,rsp:550,desc:"Sjørøver-stil",
+    dia:["🗡 Dobbelt-sverd","🏴‍☠️ Plyndring"],spec:{n:"Piratangrep",cd:600,desc:"5 raske slag"}},
+  spear_fighter:{n:"Spydkriger",cls:"angrep",cost:35,dmg:14,rng:55,fr:28,t:"m",c:"#6d4c41",hp:85,spd:2.0,um:1,rsp:580,desc:"Lang melee",
+    dia:["🗡 Langt spyd","⚡ Hurtig stikk"],spec:{n:"Spydstorm",cd:650,desc:"5 raske stikk"}},
+  viking:{n:"Viking",cls:"angrep",cost:35,dmg:18,rng:48,fr:34,t:"m",c:"#ef6c00",hp:100,spd:1.6,um:1,rsp:600,desc:"Sterk øks",
+    dia:["⚡ Tordenhammer: +stun","🪓 Dobbel-øks: 2x dmg"],spec:{n:"Krigsrop",cd:700,desc:"Alle fiender saktere"}},
+  ninja:{n:"Ninja",cls:"angrep",cost:40,dmg:20,rng:35,fr:18,t:"m",c:"#37474f",hp:50,spd:3.2,um:1,rsp:500,desc:"Ultra rask",
+    dia:["🌀 Skygge-klon: dobbel","🗡 Gift-blad: +poison"],spec:{n:"Skyggesteg",cd:500,desc:"Teleport + 3x dmg"}},
+  gladiator:{n:"Gladiator",cls:"angrep",cost:40,dmg:22,rng:48,fr:26,t:"m",c:"#ff6f00",hp:90,spd:2.0,um:1,rsp:600,desc:"Arena-kriger",
+    dia:["⚔ Dobbel-sverd","🛡 Parering"],spec:{n:"Arena Fury",cd:650,desc:"3x dmg 4 sek"}},
+  monk_warrior:{n:"Kampmunk",cls:"angrep",cost:40,dmg:20,rng:40,fr:24,t:"m",c:"#ff8f00",hp:85,spd:2.3,um:1,rsp:550,desc:"Ki-kraft",
+    dia:["☯ Ki-eksplosjon","🧘 Indre kraft"],spec:{n:"Ki-bølge",cd:700,desc:"AOE knockback"}},
+  berserker:{n:"Berserker",cls:"angrep",cost:45,dmg:24,rng:52,fr:24,t:"m",c:"#e53935",hp:65,spd:2.6,um:1,rsp:600,desc:"Rask og vill",
+    dia:["🔥 Blodrush: 3x fart","💀 Dødsvrede: 3x dmg"],spec:{n:"Blodrush",cd:600,desc:"2x dmg+spd 5 sek"}},
+  assassin:{n:"Snigmorder",cls:"angrep",cost:45,dmg:30,rng:35,fr:20,t:"m",c:"#212121",hp:45,spd:3.5,um:1,rsp:500,desc:"1-hit wonder",
+    dia:["🗡 Dødsstøt: crit","🌀 Skygge: usynlig"],spec:{n:"Henrettelse",cd:600,desc:"Instant-kill svakeste"}},
+  duelist:{n:"Duellant",cls:"angrep",cost:45,dmg:26,rng:38,fr:22,t:"m",c:"#ff5722",hp:75,spd:2.3,um:1,rsp:550,desc:"En-mot-en",
+    dia:["⚔ Riposte","🗡 Lunge"],spec:{n:"Dødelig duell",cd:650,desc:"1v1 bonus 200%"}},
+  samurai:{n:"Samurai",cls:"angrep",cost:50,dmg:28,rng:45,fr:28,t:"m",c:"#c62828",hp:80,spd:2.2,um:1,rsp:550,desc:"Presisjon",
+    dia:["🌸 Bladstorm: +splash","⚔ Mestersverd: 3x dmg"],spec:{n:"Iaijutsu",cd:600,desc:"Instant 5x dmg slag"}},
+  shadow:{n:"Skyggekriger",cls:"angrep",cost:50,dmg:30,rng:36,fr:20,t:"m",c:"#1a1a2e",hp:55,spd:3.0,um:1,rsp:500,desc:"Usynlig morder",
+    dia:["🌑 Skyggevandring","💀 Bakstikning"],spec:{n:"Skyggesteg",cd:550,desc:"Teleport bak fiende"}},
+  ronin:{n:"Ronin",cls:"angrep",cost:50,dmg:28,rng:42,fr:24,t:"m",c:"#880e4f",hp:70,spd:2.4,um:1,rsp:550,desc:"Ensom sverdmester",
+    dia:["⚔ Iajutsu: 5x crit","🌸 Sakura: DOT"],spec:{n:"Bushido",cd:700,desc:"Counter-angrep 5s"}},
+  shadow_blade:{n:"Skyggeblad",cls:"angrep",cost:50,dmg:28,rng:36,fr:18,t:"m",c:"#37474f",hp:50,spd:3.3,um:1,rsp:480,desc:"Teleporterer",
+    dia:["🌑 Blink","💀 Backstab x3"],spec:{n:"Skyggefelle",cd:600,desc:"Omring+5x dmg"}},
+  blade_dancer:{n:"Bladddanser",cls:"angrep",cost:55,dmg:22,rng:50,fr:16,t:"m",c:"#e91e63",hp:60,spd:2.8,um:1,rsp:500,desc:"Virvelvind",
+    dia:["🌀 Virvelvind: splash","💃 Dans: dodge"],spec:{n:"Bladstorm",cd:600,desc:"AOE rundt seg"}},
+  valkyrie:{n:"Valkyrie",cls:"angrep",cost:55,dmg:26,rng:46,fr:26,t:"m",c:"#ba68c8",hp:110,spd:2.0,um:1,rsp:600,desc:"Flyvende kriger",
+    dia:["🦅 Himmelstyrt","⚔ Guddommelig sverd"],spec:{n:"Valhalla",cd:800,desc:"Revive+mega dmg"}},
+  cavalry:{n:"Kavaleri",cls:"angrep",cost:55,dmg:24,rng:50,fr:24,t:"m",c:"#6d4c41",hp:120,spd:2.8,um:1,rsp:600,desc:"Ridende kriger",
+    dia:["🐎 Galopp","⚔ Lanseangrep"],spec:{n:"Kavaleri-charge",cd:700,desc:"Sprint+5x dmg"}},
+  war_chief:{n:"Krigssjef",cls:"angrep",cost:60,dmg:28,rng:48,fr:28,t:"m",c:"#bf360c",hp:130,spd:1.7,um:1,rsp:650,desc:"Leder tropper",
+    dia:["🏴 Kommando","⚔ Strategi"],spec:{n:"Fullt angrep",cd:800,desc:"Alle +50% spd 4s"}},
+  reaper:{n:"Ljåmann",cls:"angrep",cost:65,dmg:35,rng:38,fr:30,t:"m",c:"#212121",hp:60,spd:2.5,um:1,rsp:500,desc:"Instant-kill sjanse",
+    dia:["💀 Dødskutt","🌑 Skyggedrap"],spec:{n:"Dødskall",cd:900,desc:"Kill alle under 20% HP"}},
+  dragon_knight:{n:"Drageridder",cls:"angrep",cost:70,dmg:34,rng:48,fr:30,t:"m",c:"#d32f2f",hp:150,spd:1.8,um:1,rsp:800,desc:"Ridder på drage",
+    dia:["🐉 Drageild","🔥 Dragevinger"],spec:{n:"Dragebrann",cd:900,desc:"Mega ild-AOE"}},
+  demon_lord:{n:"Demonherre",cls:"angrep",cost:75,dmg:40,rng:45,fr:26,t:"m",c:"#b71c1c",hp:140,spd:2.2,um:1,rsp:700,desc:"Mørk kraft",
+    dia:["👹 Demontransform","🔥 Helvetesild"],spec:{n:"Helvete",cd:1000,desc:"Mega ild+fear"}},
+  // ═══════ TANK (Melee Defense) ═══════
+  knight:{n:"Ridder",cls:"tank",cost:30,dmg:10,rng:40,fr:34,t:"m",c:"#b0bec5",hp:100,spd:1.8,um:1,rsp:600,desc:"Solid kriger",
+    dia:["🛡 Hellig ridder: 2x HP","⚔ Korsfarerridder: 2x dmg"],spec:{n:"Skjoldmur",cd:700,desc:"+50% HP i 5 sek"}},
+  warden:{n:"Fangevokter",cls:"tank",cost:35,dmg:14,rng:44,fr:38,t:"m",c:"#4e342e",hp:140,spd:1.5,um:1,rsp:650,desc:"Kjede-angrep",
+    dia:["⛓ Lenker: slow","🛡 Jernvilje: +HP"],spec:{n:"Fengsel",cd:700,desc:"Stun 3 fiender 4s"}},
+  dwarf:{n:"Dverg",cls:"tank",cost:35,dmg:16,rng:38,fr:46,t:"m",c:"#8d6e63",hp:120,spd:1.4,um:1,rsp:600,desc:"Tung og sterk",
+    dia:["⛏ Gruvesprenger: +splash","🛡 Jernhud: 3x HP"],spec:{n:"Jordskjelv",cd:800,desc:"Skade alle nære"}},
+  stone_wall:{n:"Steinmur",cls:"tank",cost:40,dmg:6,rng:36,fr:60,t:"m",c:"#5d4037",hp:240,spd:0.5,um:1,rsp:850,desc:"Ren blokkering",
+    dia:["🪨 Hardere stein","🏔 Fjellblokk"],spec:{n:"Mur",cd:900,desc:"Blokkerer alt 5s"}},
+  shield_maiden:{n:"Skjoldmøy",cls:"tank",cost:45,dmg:14,rng:42,fr:34,t:"m",c:"#64b5f6",hp:155,spd:1.6,um:1,rsp:650,desc:"Blokker+konter",
+    dia:["🛡 Perfekt blokk","⚔ Skjoldbash"],spec:{n:"Skjoldvegg",cd:750,desc:"Team immun 3s"}},
+  guardian:{n:"Vokter",cls:"tank",cost:45,dmg:8,rng:38,fr:45,t:"m",c:"#5d4037",hp:185,spd:1.2,um:1,rsp:700,desc:"Beskytter alle",
+    dia:["🛡 Aegis: team armor","⚔ Counter: reflect"],spec:{n:"Festning",cd:800,desc:"Team +50% HP 5s"}},
+  paladin:{n:"Paladin",cls:"tank",cost:50,dmg:12,rng:44,fr:40,t:"m",c:"#ffd54f",hp:150,spd:1.5,um:1,heals:3,rsp:600,desc:"Tanky+heal",
+    dia:["✨ Hellig lys: heal aura","🛡 Guddoms-skjold: 4x HP"],spec:{n:"Hellig aura",cd:900,desc:"Heal alle +50%"}},
+  bear_warrior:{n:"Bjørnkriger",cls:"tank",cost:50,dmg:20,rng:46,fr:34,t:"m",c:"#4e342e",hp:175,spd:1.3,um:1,rsp:700,desc:"Sterk som bjørn",
+    dia:["🐻 Bjørneform","💪 Primalstyrke"],spec:{n:"Bjørnebrøl",cd:750,desc:"Stun+fear 4s"}},
+  crusader:{n:"Korsfarar",cls:"tank",cost:50,dmg:16,rng:44,fr:34,t:"m",c:"#fbc02d",hp:165,spd:1.3,um:1,rsp:700,desc:"Hellig tank",
+    dia:["✝ Hellig ild","🛡 Guddomlig vern"],spec:{n:"Hellig mur",cd:800,desc:"Team immun 3s"}},
+  sentinel:{n:"Vaktpost",cls:"tank",cost:55,dmg:14,rng:40,fr:48,t:"m",c:"#37474f",hp:200,spd:1.0,um:1,rsp:800,desc:"Ubrytelig",
+    dia:["🏰 Steinmur: absorb","⚡ Thorns: reflect dmg"],spec:{n:"Urokkelig",cd:900,desc:"Immun 6 sek"}},
+  warlord:{n:"Krigsgeneral",cls:"tank",cost:55,dmg:18,rng:46,fr:32,t:"m",c:"#bf360c",hp:165,spd:1.4,um:1,rsp:700,desc:"Buffer nære",
+    dia:["🏴 Krigsrop","⚔ Kommando"],spec:{n:"Rallying Cry",cd:800,desc:"+40% team dmg 5s"}},
+  holy_knight:{n:"Helligridder",cls:"tank",cost:55,dmg:16,rng:44,fr:36,t:"m",c:"#ffca28",hp:160,spd:1.4,um:1,rsp:700,desc:"Hellig beskytter",
+    dia:["✨ Hellig aura","🛡 Guddommelig"],spec:{n:"Hellig flamme",cd:800,desc:"AOE hellig dmg"}},
+  berserker_tank:{n:"Panserberserk",cls:"tank",cost:55,dmg:20,rng:46,fr:30,t:"m",c:"#e64a19",hp:180,spd:1.4,um:1,rsp:700,desc:"Tank med rage",
+    dia:["🔥 Raseripanser","⚔ Blodig skjold"],spec:{n:"Udømt raseri",cd:750,desc:"2x dmg+HP 5s"}},
+  golem_h:{n:"Golem",cls:"tank",cost:60,dmg:10,rng:42,fr:55,t:"m",c:"#795548",hp:230,spd:0.8,um:1,rsp:900,desc:"Enorm HP",
+    dia:["🪨 Steinmur: 5x HP","🌋 Lavakropp: +burn aura"],spec:{n:"Steinform",cd:1000,desc:"Uovervinnelig 4 sek"}},
+  templar:{n:"Tempelridder",cls:"tank",cost:60,dmg:18,rng:44,fr:34,t:"m",c:"#ffc107",hp:175,spd:1.3,um:1,rsp:700,desc:"Hellig tank",
+    dia:["✨ Hellig ild","🛡 Guds vilje"],spec:{n:"Hellig dom",cd:900,desc:"Mega AOE hellig dmg"}},
+  iron_golem:{n:"Jerngolem",cls:"tank",cost:65,dmg:14,rng:44,fr:50,t:"m",c:"#455a64",hp:280,spd:0.7,um:1,rsp:900,desc:"Ren rustning",
+    dia:["⚙ Ståloppgradering","🛡 Magnetfelt"],spec:{n:"Jernfestning",cd:950,desc:"Immun+reflect 4s"}},
+  titan_h:{n:"Titan",cls:"tank",cost:70,dmg:12,rng:48,fr:58,t:"m",c:"#3e2723",hp:320,spd:0.6,um:1,rsp:1000,desc:"GIGANTISK",
+    dia:["🏔 Fjellkropp","⚡ Titangrep"],spec:{n:"Jordskjelv",cd:1000,desc:"Mega AOE stun"}},
+  // ═══════ STØTTE (Support) ═══════
+  banner_bearer:{n:"Bannerbærer",cls:"stotte",cost:30,dmg:3,rng:200,fr:45,t:"r",c:"#c62828",ps:3,pc:"#ef9a9a",um:1,desc:"Inspirerer alle",
+    dia:["🏴 Krigsbanner","🏳 Fredsbanner"],spec:{n:"Hev banneret",cd:700,desc:"+40% team dmg 6s"}},
+  field_medic:{n:"Feltsanitet",cls:"stotte",cost:30,dmg:3,rng:200,fr:25,t:"r",c:"#e57373",ps:4,pc:"#ffcdd2",healAmt:10,um:1,desc:"Rask healer",
+    dia:["💊 Supermedisin","🩹 Akutthjelp"],spec:{n:"Triage",cd:600,desc:"Heal lavest HP x3"}},
+  healer:{n:"Healer",cls:"stotte",cost:35,dmg:2,rng:200,fr:30,t:"r",c:"#e91e63",ps:4,pc:"#f8bbd0",healAmt:8,um:1,desc:"Healer krigere",
+    dia:["💖 Masseheal: heal alle","⚡ Turboheal: 3x fart"],spec:{n:"Fullheal",cd:1000,desc:"Heal alle til 100%"}},
+  bard:{n:"Bard",cls:"stotte",cost:35,dmg:6,rng:200,fr:35,t:"r",c:"#ab47bc",ps:5,pc:"#ce93d8",um:1,desc:"Buffer alle",
+    dia:["🎵 Krigssang: +dmg","🎶 Fredssang: +heal"],spec:{n:"Inspirasjon",cd:700,desc:"Alle +30% dmg 5s"}},
+  shaman:{n:"Sjaman",cls:"stotte",cost:40,dmg:8,rng:240,fr:35,t:"r",c:"#43a047",ps:5,pc:"#81c784",healAmt:8,um:1,desc:"Natur-healer",
+    dia:["🌿 Skogånd","🌳 Naturkraft"],spec:{n:"Regndans",cd:750,desc:"Heal+buff alle"}},
+  monk:{n:"Munk",cls:"stotte",cost:40,dmg:6,rng:180,fr:25,t:"r",c:"#ffb74d",ps:5,pc:"#ffe0b2",healAmt:10,um:1,desc:"Meditativ healer",
+    dia:["🧘 Dyp meditasjon","☯ Yin-Yang balanse"],spec:{n:"Indre fred",cd:800,desc:"Full heal+cleanse"}},
+  war_drummer:{n:"Krigstrommar",cls:"stotte",cost:40,dmg:5,rng:220,fr:40,t:"r",c:"#d84315",ps:4,pc:"#ff8a65",um:1,desc:"Rytme-buffer",
+    dia:["🥁 Krigsrytme","🎵 Heltetakt"],spec:{n:"Krigstromme",cd:700,desc:"+50% alle fart 5s"}},
+  priest:{n:"Prest",cls:"stotte",cost:45,dmg:4,rng:220,fr:28,t:"r",c:"#fff176",ps:4,pc:"#fff9c4",healAmt:12,um:1,desc:"Sterk healer",
+    dia:["✨ Hellig lys: AOE heal","🛡 Velsignelse: armor"],spec:{n:"Gjenoppstandelse",cd:1000,desc:"Revive døde helter"}},
+  witch_doc:{n:"Trolldoktor",cls:"stotte",cost:45,dmg:12,rng:230,fr:42,t:"r",c:"#558b2f",ps:5,pc:"#aed581",healAmt:7,um:1,desc:"Gift+heal combo",
+    dia:["🧪 Voodoo","💚 Jungelkur"],spec:{n:"Heksebrygg",cd:800,desc:"Mega DOT+heal"}},
+  holy_archer:{n:"Helligskytter",cls:"stotte",cost:45,dmg:12,rng:340,fr:38,t:"r",c:"#fff176",ps:10,pc:"#fff9c4",healAmt:5,um:1,desc:"Dmg+Heal",
+    dia:["✨ Hellig pil","💖 Healende skudd"],spec:{n:"Hellig regn",cd:750,desc:"Heal+Dmg alle"}},
+  alchemist:{n:"Alkymist",cls:"stotte",cost:50,dmg:14,rng:250,fr:50,t:"r",c:"#7cb342",ps:7,pc:"#aed581",um:1,desc:"Gift+Heal",
+    dia:["🧪 Supergift","💊 Elixir"],spec:{n:"Transmutasjon",cd:850,desc:"Alle fiender -30% HP"}},
+  enchanter:{n:"Fortryllar",cls:"stotte",cost:50,dmg:10,rng:260,fr:42,t:"r",c:"#7b1fa2",ps:6,pc:"#e1bee7",slow:100,um:1,desc:"Debuff fiender",
+    dia:["🌀 Forbannelse: -dmg","⚡ Haste: team spd"],spec:{n:"Masseforbannelse",cd:800,desc:"-40% fiende dmg 5s"}},
+  oracle:{n:"Orakel",cls:"stotte",cost:50,dmg:10,rng:280,fr:38,t:"r",c:"#7e57c2",ps:6,pc:"#b39ddb",um:1,desc:"Ser fremtiden",
+    dia:["🔮 Profeti","👁 Allsyn"],spec:{n:"Tidssyn",cd:850,desc:"+50% alle stats 5s"}},
+  totem_master:{n:"Totemmester",cls:"stotte",cost:50,dmg:8,rng:220,fr:40,t:"r",c:"#a1887f",ps:5,pc:"#d7ccc8",um:1,desc:"Plasser totems",
+    dia:["🗿 Angreptotem","🏥 Healtotem"],spec:{n:"Megatotem",cd:750,desc:"Alle stats +30% 5s"}},
+  spirit_healer:{n:"Åndhealer",cls:"stotte",cost:55,dmg:6,rng:240,fr:35,t:"r",c:"#7986cb",ps:5,pc:"#9fa8da",healAmt:8,um:1,desc:"Åndekraft heal",
+    dia:["👻 Åndevern","✨ Sjelevern"],spec:{n:"Åndekall",cd:800,desc:"Revive+mega heal"}},
+  cannon_h:{n:"Kanon",cls:"stotte",cost:55,dmg:40,rng:350,fr:90,t:"r",c:"#ff6f00",ps:8,pc:"#ffcc80",spl:60,um:1,desc:"Enorm splash",
+    dia:["💣 Atomkanon: 3x splash","🎯 Presisjon: 2x dmg+rng"],spec:{n:"Bombardement",cd:900,desc:"5 eksplosjoner"}},
+  angel:{n:"Engel",cls:"stotte",cost:75,dmg:18,rng:300,fr:30,t:"r",c:"#fff59d",ps:8,pc:"#fffde7",healAmt:15,um:1,desc:"Hellig heal+dmg",
+    dia:["👼 Englevinger","✨ Guddommelig lys"],spec:{n:"Himmellys",cd:1000,desc:"Full heal+dmg alle"}},
+};
+/* ═══════ BUILDINGS ═══════ */
+const BLDGS={
+  hospital:{n:"Sykehus",icon:"🏥",bc:60,mx:10,ef:l=>({hp:0.08+l*0.07}),ud:l=>`Heal ${~~((0.08+l*0.07)*100)}%`},
+  forge:{n:"Smie",icon:"⚒️",bc:80,mx:10,ef:l=>({mul:1+l*0.07}),ud:l=>`+${~~(l*7)}% dmg`},
+  tower_b:{n:"Tårn",icon:"🗼",bc:100,mx:10,ef:l=>({dmg:5+l*9,rng:200+l*22,rate:Math.max(12,55-l*5)}),ud:l=>`${5+l*9} dmg`},
+  bank:{n:"Bank",icon:"🏦",bc:70,mx:10,ef:l=>({gpr:5+l*9,gpk:l*0.4}),ud:l=>`+${5+l*9}g/runde`},
+  shrine:{n:"Helligdom",icon:"⛪",bc:110,mx:10,ef:l=>({reg:0.5+l*0.6}),ud:l=>`${(0.5+l*0.6).toFixed(1)} heal/s`},
+  diamondmine:{n:"Diamantgruve",icon:"💎",bc:150,mx:5,ef:l=>({dpr:l}),ud:l=>`+${l} 💎/runde`},
+  goldmine:{n:"Gullgruve",icon:"💰",bc:90,mx:10,ef:l=>({gpr:8+l*6}),ud:l=>`+${8+l*6}g/runde`},
+  armory:{n:"Arsenal",icon:"⚔",bc:120,mx:10,ef:l=>({arm:l*2}),ud:l=>`+${l*2} rustning`},
+};
+
+/* ═══════ CLASS SYSTEM ═══════ */
+// 5 classes. Player picks ONE. All heroes of that class get tree bonuses.
+const CLASSES={
+  bue:{n:"🏹 Buemester",d:"Styrker alle avstandsangripere",c:"#66bb6a",heroes:["archer","crossbow_h","sniper","gatling","ranger","musketeer","bombardier","turret","sharpshooter","hunter_h","artillery","marksman","repeater","javelin","poison_archer"]},
+  magi:{n:"🔮 Magiker",d:"Styrker all magi og elementkraft",c:"#42a5f5",heroes:["wizard","necro","lightning_m","tesla","pyromancer","frost_mage","warlock","druid","elementalist","chronomancer","summoner","storm_mage","void_mage","nature_mage","shadow_caster","thunder_god","dragon"]},
+  angrep:{n:"⚔ Angripere",d:"Styrker raske melee-krigere",c:"#e53935",heroes:["berserker","ninja","samurai","viking","assassin","gladiator","ronin","blade_dancer","duelist","shadow","barbarian","spear_fighter","shadow_blade","war_chief","demon_lord"]},
+  tank:{n:"🛡 Forsvarere",d:"Styrker tunge tanks og riddere",c:"#ffd54f",heroes:["knight","dwarf","paladin","golem_h","guardian","sentinel","warden","warlord","shield_maiden","templar","iron_golem","holy_knight","stone_wall","bear_warrior"]},
+  stotte:{n:"💖 Støtte",d:"Styrker healere og buffere",c:"#e91e63",heroes:["healer","cannon_h","priest","bard","enchanter","monk","war_drummer","alchemist","oracle","holy_archer","field_medic","spirit_healer","totem_master","angel"]},
+};
+
+// 6 columns × 8 rows = 48 nodes per class. prereqs = prev row same col
+const NC=6;// columns
+function buildClassTree(nodes){return nodes.map((n,i)=>({id:i,n:n[0],d:n[1],ef:n[2],
+  col:i%NC,row:~~(i/NC),req:i<NC?[]:[i-NC]}));}
+
+const CLASS_TREES={
+  bue:buildClassTree([
+    // Row 0
+    ["Skarpe piler","+12% dmg",{dmgP:12}],["Rask streng","+12% fart",{frP:12}],["Langsynt","+12% rekk",{rngP:12}],["Trening","+8% alt",{dmgP:8,frP:8}],["Crit-øye","+8% crit",{critP:8}],["Stabil hånd","+8% dmg+rekk",{dmgP:8,rngP:8}],
+    // Row 1
+    ["Stålspisser","+15% dmg",{dmgP:15}],["Dobbeltskudd","+15% fart",{frP:15}],["Ørneøye","+15% rekk",{rngP:15}],["Presisjon","+10% crit",{critP:10}],["Splinterpil","+Splash 20",{splP:20}],["Vindpil","+10% dmg+fart",{dmgP:10,frP:10}],
+    // Row 2
+    ["Giftpiler","+DOT 3",{dotP:3}],["Burstfire","+20% fart",{frP:20}],["Eksplosive piler","+Splash 30",{splP:30}],["Skarpskytter","+15% crit",{critP:15}],["Brannspisser","+DOT 4",{dotP:4}],["Lengre bue","+20% rekk",{rngP:20}],
+    // Row 3
+    ["Panserbrytere","Ign. rustning",{pierceP:1}],["Lynlading","+25% fart",{frP:25}],["Kjede-skudd","+Chain 2",{chainP:2}],["Dødelig crit","+18% crit",{critP:18}],["Is-piler","+Slow 80",{slowP:80}],["Kraftig bue","+25% dmg",{dmgP:25}],
+    // Row 4
+    ["Mesterskytter","+30% dmg",{dmgP:30}],["Automatfire","+30% fart",{frP:30}],["Ekstrem rekk","+30% rekk",{rngP:30}],["Assassin-crit","Crit=2x",{critP:20}],["Ekspl. kjede","+Chain 3",{chainP:3}],["Allround","+15% alt",{dmgP:15,frP:15,rngP:15}],
+    // Row 5
+    ["Gigantpiler","+40% dmg",{dmgP:40}],["Maskingevær","+40% fart",{frP:40}],["Horisonten","+40% rekk",{rngP:40}],["Letal presisjon","+25% crit",{critP:25}],["Napalmspisser","+DOT 7",{dotP:7}],["Perfekt form","+20% alt",{dmgP:20,frP:20}],
+    // Row 6
+    ["Titanpiler","+50% dmg",{dmgP:50}],["Hyperfire","+50% fart",{frP:50}],["Uendelig syn","+50% rekk",{rngP:50}],["Dødsbringer","+30% crit",{critP:30}],["Stormsplash","+Splash 60",{splP:60}],["Mester-alt","+25% alt",{dmgP:25,frP:25,rngP:25}],
+    // Row 7 (ULTIMATE)
+    ["Gud av buer","+70% dmg",{dmgP:70}],["Tidsbue","+60% fart",{frP:60}],["Kosmisk rekk","+60% rekk",{rngP:60}],["Skjebne","+40% crit",{critP:40}],["Apokalypse","+Splash 80+DOT",{splP:80,dotP:8}],["Transcendental","+40% ALT",{dmgP:40,frP:40,rngP:40,critP:20}],
+  ]),
+  magi:buildClassTree([
+    ["Mana-flyt","+12% dmg",{dmgP:12}],["Kanaliser","+12% fart",{frP:12}],["Magisk rekk","+12% rekk",{rngP:12}],["Meditasjon","+8% alt",{dmgP:8,frP:8}],["Element","+Splash 15",{splP:15}],["Magisk øye","+8% crit",{critP:8}],
+    ["Eldkule","+15% dmg",{dmgP:15}],["Rask cast","+15% fart",{frP:15}],["Telekinese","+15% rekk",{rngP:15}],["Elementer","+Splash 25",{splP:25}],["Frostfelt","+Slow 80",{slowP:80}],["Manastrøm","+10% dmg+fart",{dmgP:10,frP:10}],
+    ["Ildstorm","+DOT 4",{dotP:4}],["Tidsmagi","+20% fart",{frP:20}],["Kjede-lyn","+Chain 2",{chainP:2}],["Isfengsel","+Slow 120",{slowP:120}],["Mørk magi","+20% dmg",{dmgP:20}],["Livskraft","+Drain",{drainP:1}],
+    ["Kaosenergi","+25% dmg",{dmgP:25}],["Dimensjonsrift","+25% fart",{frP:25}],["Nekromansi","+DOT 6",{dotP:6}],["Arkan eksp.","+Splash 40",{splP:40}],["Torden","+Chain 3",{chainP:3}],["Visdom","+20% rekk",{rngP:20}],
+    ["Mestermagi","+35% dmg",{dmgP:35}],["Tidsmanip.","+35% fart",{frP:35}],["Uendelig kjede","+Chain 4",{chainP:4}],["Mørk DOT","+DOT 8",{dotP:8}],["Splash-mester","+Splash 55",{splP:55}],["Allvitenhet","+20% alt",{dmgP:20,frP:20,rngP:20}],
+    ["Eldgud","+45% dmg",{dmgP:45}],["Tidsgud","+45% fart",{frP:45}],["Mega-kjede","+Chain 5",{chainP:5}],["Forbannelse","+DOT 10",{dotP:10}],["Ragnarok","+Splash 70",{splP:70}],["Perfeksjon","+25% alt",{dmgP:25,frP:25}],
+    ["Guddom","+55% dmg",{dmgP:55}],["Tidsstopp","+55% fart",{frP:55}],["Kjedeløs","+Chain 7+dmg",{chainP:7,dmgP:15}],["Pestilens","+DOT 15",{dotP:15}],["Supernova","+Splash 90",{splP:90}],["Arkan-mester","+30% alt",{dmgP:30,frP:30,rngP:30}],
+    ["Allvitende","+80% dmg",{dmgP:80}],["Evig tid","+70% fart",{frP:70}],["Kosmisk","+Chain 10",{chainP:10}],["Dommedag","+DOT 20+Splash",{dotP:20,splP:40}],["Universet","+Splash 120",{splP:120}],["Transcendent","+50% ALT",{dmgP:50,frP:50,rngP:50}],
+  ]),
+  angrep:buildClassTree([
+    ["Skarp klinge","+12% dmg",{dmgP:12}],["Hurtige slag","+12% fart",{frP:12}],["Sprint","+12% spd",{spdP:12}],["Krigerblod","+12% HP",{hpP:12}],["Crit-treff","+8% crit",{critP:8}],["Kampinstinkt","+8% dmg+spd",{dmgP:8,spdP:8}],
+    ["Dødelig klinge","+15% dmg",{dmgP:15}],["Dobbeltangrep","+15% fart",{frP:15}],["Lynhurtighet","+15% spd",{spdP:15}],["Seighet","+15% HP",{hpP:15}],["Presisjon","+12% crit",{critP:12}],["Virvelvind","+Splash 25",{splP:25}],
+    ["Gift-klinge","+DOT 3",{dotP:3}],["Raseri","+20% fart",{frP:20}],["Unnvikelse","+20% spd",{spdP:20}],["Blodhunger","Lifesteal",{drainP:1}],["Dødsstøt","+18% crit",{critP:18}],["Brutalitet","+20% dmg",{dmgP:20}],
+    ["Forgiftet","+DOT 5",{dotP:5}],["Berserk","+25% fart",{frP:25}],["Skygge","+25% spd",{spdP:25}],["Ustoppelig","+25% HP",{hpP:25}],["Henrettelse","+22% crit",{critP:22}],["Splash-slag","+Splash 35",{splP:35}],
+    ["Mesterkriger","+35% dmg",{dmgP:35}],["Berserkermodus","+35% fart",{frP:35}],["Fantomliv","+30% spd",{spdP:30}],["Jernvilje","+35% HP",{hpP:35}],["Letal","+25% crit",{critP:25}],["Virvelvind+","+Splash 45",{splP:45}],
+    ["Dødsgud","+45% dmg",{dmgP:45}],["Uendelig raseri","+45% fart",{frP:45}],["Lynet","+40% spd",{spdP:40}],["Titan-HP","+45% HP",{hpP:45}],["Assassin","+30% crit",{critP:30}],["Bladstorm","+Splash 60",{splP:60}],
+    ["Ødelegger","+60% dmg",{dmgP:60}],["Hyperraseri","+55% fart",{frP:55}],["Teleport","+50% spd",{spdP:50}],["Udødelig","+55% HP",{hpP:55}],["Skjebnekutt","+35% crit",{critP:35}],["Ragnarok","+Splash 75",{splP:75}],
+    ["Krigsgud","+80% dmg",{dmgP:80}],["Tidsraseri","+70% fart",{frP:70}],["Dimensjon","+60% spd",{spdP:60}],["Odødelig","+70% HP+drain",{hpP:70,drainP:1}],["Skjebne","+45% crit",{critP:45}],["Transcendent","+50% alt",{dmgP:50,frP:50,spdP:50,hpP:50}],
+  ]),
+  tank:buildClassTree([
+    ["Tykt panser","+15% HP",{hpP:15}],["Solid slag","+12% dmg",{dmgP:12}],["Tung rustning","+Arm 3",{armP:3}],["Utholdenhet","+Regen 1",{regenP:1}],["Blokkering","+8% HP+arm",{hpP:8,armP:2}],["Motangrep","+8% dmg+HP",{dmgP:8,hpP:8}],
+    ["Jernhud","+20% HP",{hpP:20}],["Kraftig slag","+15% dmg",{dmgP:15}],["Stålpanser","+Arm 5",{armP:5}],["Naturlig heal","+Regen 2",{regenP:2}],["Seihet","+15% HP",{hpP:15}],["Kontring","+12% dmg",{dmgP:12}],
+    ["Fjellstyrke","+25% HP",{hpP:25}],["Skjoldbash","+Stun 60",{stunP:60}],["Udødelig vilje","+Arm 8",{armP:8}],["Livsaura","+Regen 3",{regenP:3}],["Festning","+20% HP",{hpP:20}],["Ødelegger","+18% dmg",{dmgP:18}],
+    ["Titanblod","+30% HP",{hpP:30}],["Reflect","Reflect 15%",{reflectP:15}],["Adamantium","+Arm 12",{armP:12}],["Healingfaktor","+Regen 5",{regenP:5}],["Mur","+25% HP",{hpP:25}],["Stun-slag","+Stun 80",{stunP:80}],
+    ["Fjellguide","+40% HP",{hpP:40}],["Mesterkrig","+30% dmg",{dmgP:30}],["Diamantpanser","+Arm 16",{armP:16}],["Phoenix","+Regen 7",{regenP:7}],["Hellig HP","+30% HP",{hpP:30}],["Reflect+","Reflect 25%",{reflectP:25}],
+    ["Kolossal","+50% HP",{hpP:50}],["Guddomslag","+40% dmg",{dmgP:40}],["Guds panser","+Arm 22",{armP:22}],["Evig regen","+Regen 10",{regenP:10}],["Ubrytelig","+40% HP",{hpP:40}],["Crush","+Stun 120",{stunP:120}],
+    ["Titan","+65% HP",{hpP:65}],["Ødelegger+","+50% dmg",{dmgP:50}],["Udødelig arm","+Arm 30",{armP:30}],["Udødelig reg","+Regen 15",{regenP:15}],["Bastion","+50% HP",{hpP:50}],["Guds vrede","+40% dmg+stun",{dmgP:40,stunP:80}],
+    ["Udødelig","+80% HP",{hpP:80}],["Krigsgud","+60% dmg",{dmgP:60}],["Perfekt panser","+Arm 40",{armP:40}],["Evig liv","+Regen 20+HP",{regenP:20,hpP:30}],["Mester","+60% HP+arm",{hpP:60,armP:20}],["Transcendent","+50% ALT",{hpP:50,dmgP:50,armP:25,regenP:10}],
+  ]),
+  stotte:buildClassTree([
+    ["Bedre heal","+15% heal",{healP:15}],["Rask heal","+12% fart",{frP:12}],["Lengre rekk","+12% rekk",{rngP:12}],["Slottheal","+25 slott",{castleP:25}],["Buffer","+Team 5%",{teamDmgP:5}],["Slottmur","+Arm 3",{armP:3}],
+    ["Kraftig heal","+20% heal",{healP:20}],["Dobbel heal","+15% fart",{frP:15}],["AOE-heal","+Splash 20",{splP:20}],["Slottvakt","+40 slott",{castleP:40}],["Inspirasjon","+Team 8%",{teamDmgP:8}],["Beskyttelse","+Arm 5",{armP:5}],
+    ["Mirakel","+25% heal",{healP:25}],["Hurtigresept","+20% fart",{frP:20}],["Buff-aura","+Team 10%",{teamDmgP:10}],["Skjold","+Arm 7",{armP:7}],["Renselse","+Cleanse",{cleanseP:1}],["Vitalitet","+20% rekk",{rngP:20}],
+    ["Guddommelig","+35% heal",{healP:35}],["Lynheal","+25% fart",{frP:25}],["Krigsrop","+Team 14%",{teamDmgP:14}],["Velsignelse","+Arm 10",{armP:10}],["Slottfest","+60 slott",{castleP:60}],["Energi","+25% rekk",{rngP:25}],
+    ["Mesterheal","+45% heal",{healP:45}],["Turboheal","+30% fart",{frP:30}],["Hærfører","+Team 18%",{teamDmgP:18}],["Guddomsskjold","+Arm 14",{armP:14}],["Klarsyn","+30% rekk",{rngP:30}],["Slottborg","+80 slott",{castleP:80}],
+    ["Engel","+55% heal",{healP:55}],["Tidsheal","+40% fart",{frP:40}],["Kommandør","+Team 22%",{teamDmgP:22}],["Hellig arm","+Arm 18",{armP:18}],["Profeti","+35% rekk",{rngP:35}],["Megaslott","+100 slott",{castleP:100}],
+    ["Erzengel","+70% heal",{healP:70}],["Mirakelheal","+50% fart",{frP:50}],["General","+Team 28%",{teamDmgP:28}],["Guds vilje","+Arm 24",{armP:24}],["Omniskop","+45% rekk",{rngP:45}],["Festning","+120 slott",{castleP:120}],
+    ["Gud av heal","+90% heal",{healP:90}],["Tidløs","+60% fart",{frP:60}],["Krigsgud","+Team 35%",{teamDmgP:35}],["Udødelig aura","+Arm 30+heal",{armP:30,healP:30}],["Allseende","+50% rekk",{rngP:50}],["Transcendent","+50% ALT",{healP:50,frP:50,teamDmgP:25,castleP:80}],
+  ]),
+};
+
+function getClassTree(cls){return CLASS_TREES[cls]||CLASS_TREES.bue;}
+
+
+function applySkills(hero,g){
+  const hd=HEROES[hero.type];
+  let dmgB=0,frB=0,rngB=0,hpB=0,spdB=0;
+  // Class tree bonuses (from global state)
+  if(g&&g.classPick&&hd.cls===g.classPick){
+    const tree=getClassTree(g.classPick);
+    for(const sid of (g.classSkills||[])){const node=tree.find(n=>n.id===sid);if(!node)continue;const e=node.ef;
+      if(e.dmgP)dmgB+=e.dmgP;if(e.frP)frB+=e.frP;if(e.rngP)rngB+=e.rngP;if(e.hpP)hpB+=e.hpP;if(e.spdP)spdB+=e.spdP;
+      if(e.dotP)hero.dotH=(hero.dotH||0)+e.dotP;if(e.critP)hero.crit=(hero.crit||0)+e.critP;
+      if(e.pierceP)hero.pierce=1;if(e.slowP)hero.slow=(hero.slow||0)+e.slowP;
+      if(e.splP)hero.splash=(hero.splash||0)+e.splP;if(e.chainP)hero.chain=(hero.chain||0)+e.chainP;
+      if(e.drainP)hero.drain=1;if(e.armP)hero.armor=(hero.armor||0)+e.armP;
+      if(e.healP)hero.healBonus=(hero.healBonus||0)+e.healP/100;
+      if(e.regenP)hero.regen=(hero.regen||0)+e.regenP;
+      if(e.castleP)hero.castleHpB=(hero.castleHpB||0)+e.castleP;
+      if(e.stunP)hero.stunH=(hero.stunH||0)+e.stunP;
+      if(e.teamDmgP)hero.teamDmg=(hero.teamDmg||0)+e.teamDmgP;
+    }}
+  const baseDmg=hd.dmg*(1+hero.level*0.35)*(hero.diaLvl>=1?1+hero.diaLvl*0.35:1);
+  hero.damage=~~(baseDmg*(1+dmgB/100));
+  hero.fireRate=Math.max(3,~~((hd.fr-hero.level*2)*(1-frB/200)));
+  hero.range=~~((hd.rng+hero.level*6)*(1+rngB/100));
+  if(hero.maxHp){const baseHp=(hd.hp||80)*(1+hero.level*0.3)*(hero.diaLvl>=1?1+hero.diaLvl*0.4:1);
+    hero.maxHp=~~(baseHp*(1+hpB/100));hero.hp=Math.min(hero.hp,hero.maxHp);}
+  if(hero.spd)hero.spd=(hd.spd||1.5)*(1+spdB/100);
+}
+const spriteCache={};
+function getSprite(key,w,h,drawFn){
+  if(spriteCache[key])return spriteCache[key];
+  const c=document.createElement("canvas");c.width=w;c.height=h;
+  const x=c.getContext("2d");drawFn(x,w,h);
+  spriteCache[key]=c;return c;
+}
+
+// Pixel helper: draw a filled rect at pixel art scale
+function px(ctx,x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h);}
+function pxc(ctx,x,y,r,c){ctx.fillStyle=c;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
+
+/* ═══════ HERO SPRITE BUILDERS ═══════ */
+function buildHeroSprite(type){
+  const sw=48,sh=72;
+  return getSprite("hero_"+type,sw,sh,(ctx)=>{
+    const hd=HEROES[type];const c=hd.c;
+    const dk=(col,amt)=>{const r=parseInt(col.slice(1,3),16),g=parseInt(col.slice(3,5),16),b=parseInt(col.slice(5,7),16);
+      return `rgb(${Math.max(0,r-amt)},${Math.max(0,g-amt)},${Math.max(0,b-amt)})`;}
+    const lt=(col,amt)=>{const r=parseInt(col.slice(1,3),16),g=parseInt(col.slice(3,5),16),b=parseInt(col.slice(5,7),16);
+      return `rgb(${Math.min(255,r+amt)},${Math.min(255,g+amt)},${Math.min(255,b+amt)})`;}
+
+    // === BOOTS ===
+    const bootC=type==="ninja"?"#1a1a1a":type==="golem_h"?"#5d4037":"#3e2723";
+    px(ctx,14,64,8,6,bootC);px(ctx,26,64,8,6,bootC);
+    px(ctx,13,66,10,4,dk(bootC,10));px(ctx,25,66,10,4,dk(bootC,10));// soles
+    px(ctx,14,64,2,4,lt(bootC,20));// boot highlight
+
+    // === LEGS ===
+    const legC=type==="ninja"?"#263238":type==="paladin"?"#c9b037":type==="golem_h"?"#6d4c41":"#4e342e";
+    px(ctx,16,52,6,14,legC);px(ctx,26,52,6,14,legC);
+    px(ctx,16,52,2,14,lt(legC,15));// highlight
+    if(type==="knight"||type==="paladin"){// leg armor plates
+      px(ctx,15,54,8,3,"#90a4ae");px(ctx,25,54,8,3,"#90a4ae");
+      px(ctx,15,58,8,2,"#78909c");px(ctx,25,58,8,2,"#78909c");}
+    if(type==="viking"){px(ctx,15,60,8,2,"#5d4037");px(ctx,25,60,8,2,"#5d4037");}// fur wraps
+
+    // === BELT ===
+    px(ctx,12,50,24,3,type==="ninja"?"#37474f":"#5d4037");
+    px(ctx,22,49,4,5,"#ffd54f");// buckle
+    if(type==="viking")px(ctx,12,49,24,4,"#4e342e");
+    if(type==="samurai"){px(ctx,12,49,24,4,"#c62828");px(ctx,20,49,2,4,"#ffd54f");}
+
+    // === TORSO ===
+    for(let ty=32;ty<52;ty++){const tw=8+~~((52-ty)*0.3);
+      px(ctx,24-tw,ty,tw*2,1,c);px(ctx,24-tw,ty,2,1,lt(c,20));}// gradient body
+    // Armor detail
+    if(type==="knight"||type==="paladin"||type==="dwarf"){
+      for(let i=0;i<3;i++)px(ctx,16,36+i*5,16,2,"#90a4ae");// armor bands
+      px(ctx,22,34,4,16,"rgba(255,255,255,0.15)");// chest highlight
+    }
+    if(type==="berserker"){// scars
+      ctx.strokeStyle="#ff8a80";ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(18,36);ctx.lineTo(28,44);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(28,38);ctx.lineTo(20,46);ctx.stroke();}
+    if(type==="ninja"){// belt pouches
+      px(ctx,10,48,4,4,"#455a64");px(ctx,34,48,4,4,"#455a64");}
+    if(type==="golem_h"){// rock texture
+      for(let i=0;i<8;i++){const gx=14+~~(Math.sin(i*3)*8),gy=34+i*2;px(ctx,gx,gy,6,2,dk(c,15+i*3));}}
+
+    // === ARMS ===
+    const armC=type==="golem_h"?"#6d4c41":c;
+    px(ctx,8,34,6,16,armC);px(ctx,34,34,6,16,armC);
+    px(ctx,8,34,2,16,lt(armC,15));px(ctx,34,34,2,16,lt(armC,15));
+    // Hands
+    px(ctx,8,48,6,4,"#ffe0b2");px(ctx,34,48,6,4,"#ffe0b2");
+    if(type==="golem_h"){px(ctx,8,48,6,4,"#8d6e63");px(ctx,34,48,6,4,"#8d6e63");}
+    // Shoulder pads
+    if(type==="knight"||type==="paladin"){px(ctx,6,32,8,4,"#b0bec5");px(ctx,34,32,8,4,"#b0bec5");
+      px(ctx,6,32,8,1,lt("#b0bec5",30));}
+
+    // === SHIELD (left arm) ===
+    if(type==="knight"||type==="paladin"||type==="viking"){
+      const sc=type==="paladin"?"#ffd54f":type==="viking"?"#5d4037":"#78909c";
+      px(ctx,2,36,7,14,sc);px(ctx,2,36,7,2,lt(sc,25));px(ctx,2,36,2,14,lt(sc,15));
+      if(type==="paladin"){px(ctx,4,40,3,6,"#fff");px(ctx,3,42,5,2,"#fff");}// cross
+      if(type==="viking"){px(ctx,3,38,5,1,"#ffd54f");px(ctx,3,42,5,1,"#ffd54f");px(ctx,5,37,1,8,"#ffd54f");}// pattern
+    }
+
+    // === WEAPON (right arm) ===
+    if(type==="knight"||type==="samurai"){// sword
+      px(ctx,38,22,2,26,"#e0e0e0");px(ctx,37,46,4,4,"#ffd54f");px(ctx,38,22,1,26,"#fff");}
+    else if(type==="viking"){// axe
+      px(ctx,38,24,2,24,"#8d6e63");px(ctx,36,22,6,8,"#b0bec5");px(ctx,36,22,6,2,"#e0e0e0");}
+    else if(type==="berserker"){// dual blades
+      px(ctx,36,26,2,22,"#e0e0e0");px(ctx,38,28,2,20,"#e0e0e0");}
+    else if(type==="dwarf"){// hammer
+      px(ctx,38,26,2,22,"#6d4c41");px(ctx,35,22,8,6,"#78909c");px(ctx,35,22,8,2,"#b0bec5");}
+    else if(type==="ninja"){// kunai
+      px(ctx,38,34,2,14,"#b0bec5");px(ctx,37,32,4,3,"#78909c");}
+    else if(type==="golem_h"||type==="iron_golem"||type==="stone_wall"){// rock fist
+      px(ctx,34,46,8,6,"#5d4037");px(ctx,34,46,8,2,"#8d6e63");}
+    else if(type==="assassin"||type==="shadow"||type==="shadow_blade"){// dual daggers
+      px(ctx,36,32,2,16,"#b0bec5");px(ctx,38,34,2,14,"#90a4ae");
+      px(ctx,6,34,2,14,"#b0bec5");}// left dagger too
+    else if(type==="gladiator"||type==="spear_fighter"||type==="javelin"){// spear/trident
+      px(ctx,38,14,2,34,"#8d6e63");px(ctx,36,12,6,4,"#b0bec5");px(ctx,37,10,2,4,"#e0e0e0");}
+    else if(type==="valkyrie"||type==="cavalry"){// lance
+      px(ctx,38,10,2,38,"#8d6e63");px(ctx,37,8,4,5,"#ffd54f");}
+    else if(type==="reaper"){// scythe
+      ctx.strokeStyle="#b0bec5";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(38,20);ctx.quadraticCurveTo(42,30,38,48);ctx.stroke();
+      px(ctx,34,18,8,4,"#e0e0e0");px(ctx,32,16,6,3,"#b0bec5");}
+    else if(type==="demon_lord"){// flame sword
+      for(let sy=20;sy<46;sy++){const sw=2+Math.sin((sy-20)*0.3)*1;
+        px(ctx,38-sw,sy,sw*2,1,sy<30?"#ff6f00":"#e0e0e0");}
+      px(ctx,37,46,4,4,"#b71c1c");}// hilt
+    else if(type==="dragon_knight"){// flaming lance
+      px(ctx,38,12,2,36,"#8d6e63");
+      for(let i=0;i<4;i++)px(ctx,36+rn(-1,3),10+i*2,3,2,["#ff6f00","#ff3d00","#ffd54f","#ff8f00"][i]);}
+    else if(hd.cls==="bue"&&hd.t==="r"){// bow
+      ctx.strokeStyle="#8d6e63";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(40,28);ctx.quadraticCurveTo(46,38,40,48);ctx.stroke();
+      ctx.strokeStyle="#aaa";ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(40,28);ctx.lineTo(40,48);ctx.stroke();}
+    else if(hd.cls==="magi"&&hd.t==="r"){// staff
+      px(ctx,38,16,2,32,hd.c==="42a5f5"?"#8d6e63":"#5d4037");
+      pxc(ctx,39,14,4,hd.c);pxc(ctx,39,14,2,"#fff");}// orb on top
+
+    // === HEAD ===
+    const skinC=type==="golem_h"?"#a1887f":"#ffe0b2";
+    for(let hy=18;hy<30;hy++){const hw=6+Math.max(0,5-Math.abs(hy-24)*0.8);
+      px(ctx,24-hw,hy,hw*2,1,skinC);}
+    // Cheeks
+    pxc(ctx,18,26,2,"#ffccbc");pxc(ctx,30,26,2,"#ffccbc");
+
+    // === EYES ===
+    const eyeC=type==="berserker"?"#ff1744":type==="necro"?"#b388ff":type==="golem_h"?"#ffab00":"#1a237e";
+    px(ctx,19,23,3,3,"#fff");px(ctx,26,23,3,3,"#fff");
+    px(ctx,20,24,2,2,eyeC);px(ctx,27,24,2,2,eyeC);
+    px(ctx,20,24,1,1,"#000");px(ctx,27,24,1,1,"#000");// pupil
+
+    // === HEADGEAR ===
+    if(type==="knight"||type==="dwarf"){// helmet
+      for(let hy=14;hy<22;hy++){const hw=7+Math.max(0,3-Math.abs(hy-18)*0.5);px(ctx,24-hw,hy,hw*2,1,"#78909c");}
+      px(ctx,17,14,14,2,"#b0bec5");// visor line
+      px(ctx,23,10,2,6,"#78909c");// crest
+    }else if(type==="paladin"){// golden crown
+      for(let hy=15;hy<21;hy++){const hw=7;px(ctx,24-hw,hy,hw*2,1,"#ffd54f");}
+      px(ctx,17,12,2,5,"#ffd54f");px(ctx,23,10,2,7,"#ffd54f");px(ctx,29,12,2,5,"#ffd54f");// points
+      px(ctx,18,13,1,3,"#ff1744");px(ctx,24,11,1,3,"#42a5f5");px(ctx,29,13,1,3,"#66bb6a");// gems
+    }else if(type==="viking"){// horned helm
+      for(let hy=15;hy<22;hy++)px(ctx,16,hy,16,1,"#5d4037");
+      px(ctx,14,12,3,8,"#ffe0b2");px(ctx,31,12,3,8,"#ffe0b2");// horns
+      px(ctx,13,10,2,4,"#ffe0b2");px(ctx,33,10,2,4,"#ffe0b2");// horn tips
+    }else if(type==="samurai"){// kabuto
+      for(let hy=13;hy<21;hy++){const hw=8+Math.max(0,(hy-13)*0.5);px(ctx,24-hw,hy,hw*2,1,"#c62828");}
+      px(ctx,10,17,28,2,"#c62828");// wide brim
+      px(ctx,22,8,4,6,"#ffd54f");// ornament
+    }else if(type==="ninja"){// mask
+      px(ctx,16,22,16,6,"#37474f");// face mask
+      px(ctx,16,16,16,4,"#263238");// headband
+      px(ctx,32,17,6,2,"#e53935");// band tail
+    }else if(type==="berserker"){// wild hair
+      for(let i=0;i<8;i++){const hx=15+i*2.5,hy=10+Math.sin(i*2)*3;
+        px(ctx,hx,hy,2,12-i,"#e53935");}
+    }else if(type==="golem_h"){// rocky head
+      for(let i=0;i<4;i++)px(ctx,16+i*5,14+i%2*2,4,3,dk("#a1887f",10+i*5));
+    }else if(type==="healer"||type==="priest"||type==="monk"||type==="field_medic"||type==="spirit_healer"||type==="holy_archer"){
+      // Healer hood/halo
+      const haloC=type==="priest"?"#fff176":type==="monk"?"#ff8f00":type==="spirit_healer"?"#7986cb":hd.c;
+      for(let hy=14;hy<21;hy++){const hw=7;px(ctx,24-hw,hy,hw*2,1,haloC);}
+      pxc(ctx,24,10,5,`${haloC}60`);// halo glow
+      px(ctx,19,11,10,2,haloC);// halo ring
+      if(type==="monk"){px(ctx,22,15,4,4,"#ffe0b2");}// bald head
+      if(type==="field_medic"){px(ctx,20,14,8,4,"#fff");px(ctx,22,38,4,8,"#f44336");px(ctx,20,41,8,2,"#f44336");}// red cross
+    }else if(type==="bard"||type==="enchanter"||type==="war_drummer"||type==="totem_master"||type==="banner_bearer"){
+      // Musical/support hat with feather
+      for(let hy=12;hy<21;hy++){const hw=6+Math.max(0,3-(hy-16)*(hy-16)*0.1);px(ctx,24-hw,hy,hw*2,1,hd.c);}
+      px(ctx,30,8,2,10,type==="war_drummer"?"#ff5722":"#4caf50");// feather
+      px(ctx,31,6,3,4,type==="war_drummer"?"#ff8a65":"#81c784");// feather tip
+      if(type==="banner_bearer"){px(ctx,36,16,2,20,"#8d6e63");px(ctx,34,10,6,8,"#c62828");}// banner
+      if(type==="war_drummer"){px(ctx,6,42,10,8,"#8d6e63");px(ctx,7,43,8,6,hd.c);}// drum
+    }else if(type==="cannon_h"||type==="bombardier"||type==="artillery"||type==="ballista"){
+      // Heavy artillery helmet/goggles
+      for(let hy=14;hy<22;hy++)px(ctx,16,hy,16,1,"#455a64");
+      px(ctx,18,20,4,4,"#ff6f00");px(ctx,26,20,4,4,"#ff6f00");// goggles
+      px(ctx,17,20,6,1,"#fff");px(ctx,25,20,6,1,"#fff");// goggle shine
+      if(type==="artillery"){px(ctx,22,8,4,8,"#ff6f00");}// antenna
+    }else if(hd.cls==="magi"){
+      // Wizard/mage pointed hat with stars
+      const hatC=hd.c;
+      for(let hy=2;hy<20;hy++){const hw=Math.max(1,~~(9-(20-hy)*0.45));px(ctx,24-hw,hy,hw*2,1,hatC);}
+      px(ctx,12,19,24,3,dk(hatC,15));// brim
+      px(ctx,23,4,2,2,"#ffd54f");// star on tip
+      if(type==="frost_mage"){px(ctx,22,10,4,4,"#80deea");px(ctx,23,11,2,2,"#fff");}// ice crystal
+      if(type==="pyromancer"){for(let i=0;i<3;i++){px(ctx,20+i*3,8-i,2,3+i,"#ff6d00");}}// flames
+      if(type==="necro"||type==="warlock"||type==="shadow_caster"){px(ctx,22,8,4,5,"#b388ff");pxc(ctx,24,10,2,"#e040fb");}// dark orb
+      if(type==="lightning_m"||type==="thunder_god"||type==="storm_mage"){
+        ctx.strokeStyle="#ffee58";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(24,2);ctx.lineTo(26,6);ctx.lineTo(22,8);ctx.lineTo(25,12);ctx.stroke();}// lightning
+      if(type==="druid"||type==="nature_mage"){px(ctx,20,6,8,3,"#2e7d32");px(ctx,22,4,4,3,"#4caf50");}// leaves
+      if(type==="dragon"){// dragon horns
+        px(ctx,14,10,3,8,"#d32f2f");px(ctx,31,10,3,8,"#d32f2f");px(ctx,13,8,2,4,"#ff5722");px(ctx,33,8,2,4,"#ff5722");}
+    }else if(hd.cls==="bue"&&hd.t==="r"){
+      // Ranger/archer hood
+      const hooC=type==="poison_archer"?"#1b5e20":type==="gatling"||type==="turret"?"#455a64":hd.c;
+      for(let hy=12;hy<22;hy++){const hw=7+Math.max(0,2-Math.abs(hy-17));px(ctx,24-hw,hy,hw*2,1,hooC);}
+      px(ctx,14,18,20,2,dk(hooC,10));// hood edge
+      if(type==="sniper"||type==="sharpshooter"||type==="marksman"){// scope on eye
+        px(ctx,26,22,6,4,"#455a64");px(ctx,28,23,2,2,"#ff1744");}
+      if(type==="gatling"||type==="turret"||type==="repeater"){// tech visor
+        px(ctx,17,22,14,3,"#00e5ff50");px(ctx,18,22,12,1,"#00e5ff");}
+      if(type==="musketeer"){px(ctx,22,10,4,6,"#8d6e63");px(ctx,26,14,8,2,"#5d4037");}// tricorne edge
+      if(type==="javelin"){// headband
+        px(ctx,16,17,16,3,"#c62828");px(ctx,32,16,4,2,"#c62828");}// band tail
+    }else if(hd.cls==="angrep"&&hd.t==="m"){
+      // Fighter headgear
+      if(type==="assassin"||type==="shadow"||type==="shadow_blade"){// dark mask
+        px(ctx,16,22,16,6,"#1a1a2e");px(ctx,16,16,16,4,"#0d0d1a");
+        px(ctx,19,23,3,2,"#ff1744");px(ctx,26,23,3,2,"#ff1744");}// glowing eyes
+      else if(type==="gladiator"){// gladiator helmet
+        for(let hy=14;hy<22;hy++)px(ctx,15,hy,18,1,"#b0bec5");
+        px(ctx,22,8,4,8,"#e53935");px(ctx,21,6,6,4,"#ef5350");}// red crest
+      else if(type==="ronin"||type==="duelist"){// ronin straw hat
+        px(ctx,10,16,28,3,"#8d6e63");px(ctx,14,14,20,4,"#a1887f");px(ctx,18,12,12,4,"#bcaaa4");}
+      else if(type==="valkyrie"){// winged helm
+        for(let hy=15;hy<22;hy++)px(ctx,16,hy,16,1,"#b0bec5");
+        px(ctx,10,12,5,6,"#fff");px(ctx,33,12,5,6,"#fff");// wings
+        px(ctx,8,10,4,4,"#e0e0e0");px(ctx,36,10,4,4,"#e0e0e0");}// wing tips
+      else if(type==="reaper"){// reaper hood
+        for(let hy=10;hy<22;hy++){const hw=8+Math.max(0,(hy-10)*0.3);px(ctx,24-hw,hy,hw*2,1,"#212121");}
+        px(ctx,20,24,3,2,"#ff1744");px(ctx,25,24,3,2,"#ff1744");}// red eyes
+      else if(type==="demon_lord"){// demon horns
+        px(ctx,12,8,4,12,"#b71c1c");px(ctx,32,8,4,12,"#b71c1c");
+        px(ctx,11,6,3,4,"#ff1744");px(ctx,34,6,3,4,"#ff1744");// horn tips
+        px(ctx,16,14,16,6,"#d32f2f");}// crown
+      else if(type==="dragon_knight"){// dragon helm
+        for(let hy=12;hy<22;hy++)px(ctx,15,hy,18,1,"#c62828");
+        px(ctx,12,10,4,6,"#ff6f00");px(ctx,32,10,4,6,"#ff6f00");}// horns
+      else if(type==="cavalry"){// cavalry cap
+        for(let hy=14;hy<22;hy++)px(ctx,15,hy,18,1,"#5d4037");
+        px(ctx,14,14,20,3,"#8d6e63");px(ctx,30,12,6,3,"#ff8f00");}// plume
+      else{// wild hair/headband
+        for(let i=0;i<7;i++){px(ctx,15+i*2.5,12+Math.sin(i*2)*2,2,8-i*0.5,hd.c);}}
+    }else if(hd.cls==="tank"&&hd.t==="m"){
+      // Heavy armor helmet
+      if(type==="iron_golem"){// gear head
+        for(let hy=12;hy<22;hy++)px(ctx,15,hy,18,1,"#607d8b");
+        px(ctx,20,10,8,4,"#78909c");pxc(ctx,24,14,3,"#ff6f00");}// glowing eye
+      else if(type==="titan_h"){// massive stone helm
+        for(let hy=10;hy<23;hy++){const hw=9;px(ctx,24-hw,hy,hw*2,1,"#5d4037");}
+        for(let i=0;i<3;i++)px(ctx,16+i*6,10,4,3,dk("#5d4037",15+i*5));}
+      else if(type==="stone_wall"){// brick helmet
+        for(let hy=12;hy<22;hy++)px(ctx,14,hy,20,1,"#795548");
+        for(let i=0;i<4;i++)px(ctx,14+i*5,14,4,3,dk("#795548",10));}// bricks
+      else if(type==="shield_maiden"||type==="crusader"){// valkyrie/crusader helm
+        for(let hy=14;hy<22;hy++)px(ctx,15,hy,18,1,"#b0bec5");
+        px(ctx,22,10,4,6,"#ffd54f");// crest
+        if(type==="crusader"){px(ctx,22,14,4,4,"#fff");px(ctx,21,16,6,1,"#fff");}// cross
+      }else if(type==="bear_warrior"){// bear ears
+        pxc(ctx,17,13,4,"#5d4037");pxc(ctx,31,13,4,"#5d4037");
+        pxc(ctx,17,13,2,"#8d6e63");pxc(ctx,31,13,2,"#8d6e63");
+        for(let hy=15;hy<22;hy++)px(ctx,16,hy,16,1,"#6d4c41");}
+      else{// standard heavy helm
+        for(let hy=14;hy<22;hy++){const hw=7+Math.max(0,2-Math.abs(hy-18)*0.3);px(ctx,24-hw,hy,hw*2,1,"#78909c");}
+        px(ctx,17,14,14,2,"#b0bec5");px(ctx,23,10,2,6,"#78909c");}// crest
+    }else{// generic fallback - colored cap
+      const hatC=hd.c;for(let hy=14;hy<21;hy++){const hw=7;px(ctx,24-hw,hy,hw*2,1,hatC);}
+    }
+
+    // === CAPE ===
+    if(type==="paladin"||type==="samurai"||type==="crusader"||type==="valkyrie"||type==="demon_lord"||type==="angel"||type==="dragon_knight"){
+      const capeC=type==="paladin"||type==="crusader"?"#ffd54f":type==="samurai"?"#c62828":type==="valkyrie"?"#ba68c8":type==="demon_lord"?"#b71c1c":type==="angel"?"#fff9c4":type==="dragon_knight"?"#ff6f00":"#666";
+      for(let cy=34;cy<62;cy++){const cw=4+~~((cy-34)*0.15);
+        px(ctx,24-cw+12,cy,cw*2-12,1,capeC+"80");}
+      if(type==="angel"){// wings!
+        for(let wy=28;wy<48;wy++){const ww=6+Math.sin((wy-28)*0.2)*4;
+          px(ctx,2,wy,ww,1,"rgba(255,255,255,0.4)");px(ctx,46-ww,wy,ww,1,"rgba(255,255,255,0.4)");}}
+    }
+
+    // === TYPE EMBLEM ===
+    if(type==="healer"||type==="priest"||type==="field_medic"){px(ctx,22,38,4,8,"#fff");px(ctx,20,41,8,2,"#fff");}
+    if(type==="alchemist"||type==="witch_doc"){px(ctx,20,38,8,6,"#7cb342");px(ctx,22,36,4,3,"#aed581");}// potion
+    if(type==="shaman"){px(ctx,20,38,8,8,"#43a047");pxc(ctx,24,42,3,"#81c784");}// nature orb
+    if(type==="oracle"){pxc(ctx,24,42,4,"#7e57c2");pxc(ctx,24,42,2,"#e1bee7");}// crystal ball
+    if(type==="angel"){px(ctx,22,38,4,6,"#fff9c4");px(ctx,20,40,8,2,"#fff9c4");}// holy cross
+  });
+}
+
+function buildMonSprite(raceId,era,boss){
+  const race=RACES[raceId];const sw=~~(race.w*1.8),sh=~~(race.h*1.8);
+  const key="mon_"+raceId+(boss?"_b":"");
+  return getSprite(key,sw,sh,(ctx)=>{
+    const c=race.c;const cx=sw/2,cy=sh;
+    const dk=(col,a)=>{const r=parseInt(col.slice(1,3),16),g=parseInt(col.slice(3,5),16),b=parseInt(col.slice(5,7),16);
+      return `rgb(${Math.max(0,r-a)},${Math.max(0,g-a)},${Math.max(0,b-a)})`;}
+    const lt=(col,a)=>{const r=parseInt(col.slice(1,3),16),g=parseInt(col.slice(3,5),16),b=parseInt(col.slice(5,7),16);
+      return `rgb(${Math.min(255,r+a)},${Math.min(255,g+a)},${Math.min(255,b+a)})`;}
+
+    if(raceId==="rat"||raceId==="swarm_bot"){
+      const mc=raceId==="swarm_bot"?"#00e5ff":c;
+      // Body oval
+      for(let ry=sh*0.3;ry<sh*0.8;ry++){const rw=sw*0.35*Math.sin((ry-sh*0.3)/(sh*0.5)*Math.PI);
+        px(ctx,cx-rw,ry,rw*2,1,mc);}
+      // Head
+      pxc(ctx,cx-sw*0.2,sh*0.35,sw*0.15,mc);
+      px(ctx,cx-sw*0.3,sh*0.3,2,2,"#111");// eye
+      // Ears
+      pxc(ctx,cx-sw*0.15,sh*0.22,3,dk(mc,20));pxc(ctx,cx-sw*0.05,sh*0.2,3,dk(mc,20));
+      // Tail
+      ctx.strokeStyle=dk(mc,15);ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx+sw*0.2,sh*0.5);ctx.quadraticCurveTo(cx+sw*0.4,sh*0.3,cx+sw*0.35,sh*0.15);ctx.stroke();
+      // Legs
+      px(ctx,cx-sw*0.15,sh*0.75,3,sh*0.2,dk(mc,20));px(ctx,cx+sw*0.05,sh*0.75,3,sh*0.2,dk(mc,20));
+      px(ctx,cx-sw*0.25,sh*0.7,3,sh*0.15,dk(mc,20));px(ctx,cx+sw*0.15,sh*0.7,3,sh*0.15,dk(mc,20));
+      if(raceId==="swarm_bot"){pxc(ctx,cx,sh*0.5,sw*0.12,"rgba(0,229,255,0.3)");}// glow
+    }else if(raceId==="wolf"){
+      // Wolf body
+      for(let wy=sh*0.3;wy<sh*0.7;wy++){const ww=sw*0.4*Math.sin((wy-sh*0.3)/(sh*0.4)*Math.PI);
+        px(ctx,cx-ww,wy,ww*2,1,c);px(ctx,cx-ww,wy,2,1,lt(c,15));}
+      // Head
+      pxc(ctx,cx-sw*0.25,sh*0.32,sw*0.14,c);
+      // Snout
+      for(let sy=sh*0.3;sy<sh*0.4;sy++)px(ctx,cx-sw*0.4,sy,sw*0.12,1,dk(c,10));
+      px(ctx,cx-sw*0.4,sh*0.36,3,2,"#111");// nose
+      // Ears (pointed)
+      ctx.fillStyle="#546e7a";ctx.beginPath();ctx.moveTo(cx-sw*0.15,sh*0.2);ctx.lineTo(cx-sw*0.22,sh*0.05);ctx.lineTo(cx-sw*0.28,sh*0.22);ctx.fill();
+      ctx.beginPath();ctx.moveTo(cx-sw*0.08,sh*0.18);ctx.lineTo(cx-sw*0.12,sh*0.03);ctx.lineTo(cx-sw*0.18,sh*0.2);ctx.fill();
+      // Eye
+      px(ctx,cx-sw*0.2,sh*0.28,3,3,"#ffd54f");px(ctx,cx-sw*0.19,sh*0.29,1,1,"#000");
+      // Legs
+      for(let i=0;i<4;i++){const lx=cx-sw*0.2+i*sw*0.14;px(ctx,lx,sh*0.65,3,sh*0.3,dk(c,15));}
+      // Tail (bushy)
+      ctx.fillStyle="#90a4ae";ctx.beginPath();ctx.moveTo(cx+sw*0.25,sh*0.4);ctx.quadraticCurveTo(cx+sw*0.45,sh*0.2,cx+sw*0.4,sh*0.35);ctx.quadraticCurveTo(cx+sw*0.35,sh*0.5,cx+sw*0.25,sh*0.45);ctx.fill();
+      // Fur texture
+      for(let i=0;i<6;i++){px(ctx,cx-sw*0.2+i*sw*0.08,sh*0.65,2,3,dk(c,10+i*3));}
+    }else if(raceId==="troll_p"){
+      // HUGE troll - muscular
+      // Legs
+      px(ctx,cx-sw*0.18,sh*0.7,sw*0.14,sh*0.26,dk(c,10));px(ctx,cx+sw*0.04,sh*0.7,sw*0.14,sh*0.26,dk(c,10));
+      px(ctx,cx-sw*0.2,sh*0.92,sw*0.18,sh*0.06,"#1b5e20");px(ctx,cx+sw*0.02,sh*0.92,sw*0.18,sh*0.06,"#1b5e20");// feet
+      // Massive torso
+      for(let ty=sh*0.25;ty<sh*0.72;ty++){const tw=sw*0.35*Math.sin((ty-sh*0.25)/(sh*0.47)*Math.PI);
+        px(ctx,cx-tw,ty,tw*2,1,c);px(ctx,cx-tw,ty,2,1,lt(c,12));}
+      // Belly
+      pxc(ctx,cx,sh*0.55,sw*0.15,lt(c,8));
+      // Arms (huge, dangling)
+      for(let ay=sh*0.3;ay<sh*0.8;ay++){const aw=sw*0.08+Math.sin((ay-sh*0.3)/(sh*0.5)*Math.PI)*sw*0.04;
+        px(ctx,cx-sw*0.4,ay,aw,1,"#2e7d32");px(ctx,cx+sw*0.33,ay,aw,1,"#2e7d32");}
+      // Fists
+      pxc(ctx,cx-sw*0.38,sh*0.82,sw*0.06,"#2e7d32");pxc(ctx,cx+sw*0.38,sh*0.82,sw*0.06,"#2e7d32");
+      // Small head
+      pxc(ctx,cx,sh*0.2,sw*0.12,"#33691e");
+      // Eyes (angry red)
+      px(ctx,cx-sw*0.06,sh*0.17,4,3,"#ff1744");px(ctx,cx+sw*0.02,sh*0.17,4,3,"#ff1744");
+      // Underbite + tusks
+      pxc(ctx,cx,sh*0.26,sw*0.08,"#1b5e20");
+      px(ctx,cx-4,sh*0.22,3,5,"#e0e0e0");px(ctx,cx+2,sh*0.22,3,5,"#e0e0e0");
+      // Warts
+      pxc(ctx,cx-sw*0.08,sh*0.3,2,"#2e7d32");pxc(ctx,cx+sw*0.1,sh*0.35,2,"#2e7d32");
+    }else if(raceId==="mammoth"){
+      // MASSIVE mammoth
+      // Body
+      for(let my=sh*0.15;my<sh*0.7;my++){const mw=sw*0.43*Math.sin((my-sh*0.15)/(sh*0.55)*Math.PI);
+        px(ctx,cx-mw,my,mw*2,1,c);if(my%2===0)px(ctx,cx-mw,my,mw*2,1,dk(c,5));}// fur texture
+      // 4 pillar legs
+      for(let i=0;i<4;i++){const lx=cx-sw*0.3+i*sw*0.2;
+        px(ctx,lx,sh*0.6,sw*0.1,sh*0.35,dk(c,15));px(ctx,lx,sh*0.6,2,sh*0.35,lt(c,10));}
+      // Feet
+      for(let i=0;i<4;i++){const lx=cx-sw*0.31+i*sw*0.2;px(ctx,lx,sh*0.92,sw*0.12,sh*0.06,"#4e342e");}
+      // Head
+      pxc(ctx,cx-sw*0.28,sh*0.25,sw*0.16,dk(c,5));
+      // Trunk
+      ctx.strokeStyle=dk(c,10);ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(cx-sw*0.38,sh*0.28);ctx.quadraticCurveTo(cx-sw*0.48,sh*0.5,cx-sw*0.4,sh*0.7);ctx.stroke();
+      ctx.strokeStyle=lt(c,5);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx-sw*0.37,sh*0.28);ctx.quadraticCurveTo(cx-sw*0.47,sh*0.5,cx-sw*0.39,sh*0.7);ctx.stroke();
+      // Tusks
+      ctx.strokeStyle="#ffe0b2";ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(cx-sw*0.22,sh*0.3);ctx.quadraticCurveTo(cx-sw*0.35,sh*0.55,cx-sw*0.2,sh*0.65);ctx.stroke();
+      // Eye
+      px(ctx,cx-sw*0.2,sh*0.2,4,4,"#111");px(ctx,cx-sw*0.19,sh*0.2,2,2,"#333");
+      // Fur hanging
+      for(let i=0;i<12;i++){const fx=cx-sw*0.35+i*sw*0.06;px(ctx,fx,sh*0.6,2,4+i%3*2,"#5d4037");}
+    }else if(raceId==="tank_m"){
+      // Military tank
+      // Treads
+      px(ctx,2,sh*0.7,sw-4,sh*0.25,"#263238");
+      for(let i=0;i<10;i++){const wx=4+i*(sw-8)/10;pxc(ctx,wx,sh*0.82,sh*0.08,"#37474f");pxc(ctx,wx,sh*0.82,sh*0.04,"#455a64");}
+      // Hull
+      ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(4,sh*0.7);ctx.lineTo(sw*0.15,sh*0.35);ctx.lineTo(sw*0.85,sh*0.35);ctx.lineTo(sw-4,sh*0.7);ctx.fill();
+      px(ctx,sw*0.15,sh*0.35,sw*0.7,2,"#5d4037");// top edge
+      // Turret
+      pxc(ctx,sw*0.55,sh*0.3,sw*0.18,"#37474f");pxc(ctx,sw*0.55,sh*0.3,sw*0.12,"#455a64");
+      // Barrel
+      px(ctx,sw*0.55,sh*0.27,sw*0.4,3,"#263238");px(ctx,sw*0.55,sh*0.26,sw*0.4,1,"#37474f");
+      px(ctx,sw*0.9,sh*0.25,sw*0.06,5,"#263238");// muzzle
+      // Details
+      px(ctx,sw*0.2,sh*0.45,sw*0.15,2,"#5d4037");px(ctx,sw*0.2,sh*0.55,sw*0.15,2,"#5d4037");// hatches
+      pxc(ctx,sw*0.35,sh*0.5,3,"#f44336");// red star
+    }else if(raceId==="catapult_m"){
+      // Stone age catapult - wooden frame
+      // Base/wheels
+      px(ctx,4,sh*0.75,sw-8,sh*0.1,"#5d4037");
+      pxc(ctx,sw*0.2,sh*0.85,sh*0.08,"#4e342e");pxc(ctx,sw*0.8,sh*0.85,sh*0.08,"#4e342e");// wheels
+      pxc(ctx,sw*0.2,sh*0.85,sh*0.03,"#3e2723");pxc(ctx,sw*0.8,sh*0.85,sh*0.03,"#3e2723");// hubs
+      // Frame
+      px(ctx,sw*0.4,sh*0.2,3,sh*0.55,"#6d4c41");px(ctx,sw*0.55,sh*0.2,3,sh*0.55,"#6d4c41");// uprights
+      // Arm
+      ctx.strokeStyle="#8d6e63";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(sw*0.3,sh*0.15);ctx.lineTo(sw*0.7,sh*0.35);ctx.stroke();
+      // Bucket
+      pxc(ctx,sw*0.25,sh*0.15,sw*0.08,"#795548");
+      // Rock in bucket
+      pxc(ctx,sw*0.25,sh*0.12,sw*0.05,"#9e9e9e");
+      // Ropes
+      ctx.strokeStyle="#a1887f";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(sw*0.48,sh*0.2);ctx.lineTo(sw*0.35,sh*0.5);ctx.stroke();
+    }else if(raceId==="heli"){
+      // Helicopter
+      // Tail boom
+      px(ctx,sw*0.6,sh*0.35,sw*0.35,3,"#546e7a");
+      px(ctx,sw*0.9,sh*0.2,2,sh*0.18,"#455a64");px(ctx,sw*0.85,sh*0.2,8,2,"#607d8b");// tail rotor
+      // Body
+      for(let hy=sh*0.25;hy<sh*0.55;hy++){const hw=sw*0.28*Math.sin((hy-sh*0.25)/(sh*0.3)*Math.PI);
+        px(ctx,cx-sw*0.1-hw*0.3,hy,hw*1.6,1,"#607d8b");}
+      // Cockpit glass
+      ctx.fillStyle="rgba(100,200,255,0.35)";ctx.beginPath();ctx.ellipse(cx-sw*0.15,sh*0.38,sw*0.1,sh*0.1,0.2,0,Math.PI*2);ctx.fill();
+      // Skids
+      px(ctx,cx-sw*0.2,sh*0.55,2,sh*0.15,"#455a64");px(ctx,cx+sw*0.05,sh*0.55,2,sh*0.15,"#455a64");
+      px(ctx,cx-sw*0.25,sh*0.68,sw*0.35,2,"#455a64");
+      // Rotor disc
+      ctx.strokeStyle="rgba(200,200,200,0.4)";ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(cx-sw*0.05,sh*0.2,sw*0.4,3,0,0,Math.PI*2);ctx.stroke();
+      pxc(ctx,cx-sw*0.05,sh*0.2,3,"#78909c");// hub
+    }else if(raceId==="mech"){
+      // Giant mech
+      // Legs (jointed)
+      px(ctx,cx-sw*0.2,sh*0.75,sw*0.1,sh*0.2,"#616161");px(ctx,cx+sw*0.1,sh*0.75,sw*0.1,sh*0.2,"#616161");
+      pxc(ctx,cx-sw*0.15,sh*0.72,4,"#757575");pxc(ctx,cx+sw*0.15,sh*0.72,4,"#757575");// knee joints
+      px(ctx,cx-sw*0.18,sh*0.55,sw*0.08,sh*0.2,"#424242");px(ctx,cx+sw*0.1,sh*0.55,sw*0.08,sh*0.2,"#424242");
+      // Feet
+      px(ctx,cx-sw*0.24,sh*0.92,sw*0.16,sh*0.06,"#616161");px(ctx,cx+sw*0.08,sh*0.92,sw*0.16,sh*0.06,"#616161");
+      // Torso
+      ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(cx-sw*0.25,sh*0.55);ctx.lineTo(cx-sw*0.18,sh*0.25);ctx.lineTo(cx+sw*0.18,sh*0.25);ctx.lineTo(cx+sw*0.25,sh*0.55);ctx.fill();
+      // Chest detail
+      px(ctx,cx-sw*0.1,sh*0.3,sw*0.2,2,"#757575");px(ctx,cx-sw*0.08,sh*0.35,sw*0.16,2,"#757575");
+      pxc(ctx,cx,sh*0.4,sw*0.06,"rgba(255,100,0,0.4)");// reactor core
+      // Arms
+      px(ctx,cx-sw*0.33,sh*0.28,sw*0.08,sh*0.3,"#616161");px(ctx,cx+sw*0.25,sh*0.28,sw*0.08,sh*0.3,"#616161");
+      // Weapon hands
+      pxc(ctx,cx-sw*0.33,sh*0.6,sw*0.05,"#ff6f00");pxc(ctx,cx+sw*0.29,sh*0.6,sw*0.05,"#42a5f5");
+      // Head (cockpit)
+      px(ctx,cx-sw*0.1,sh*0.15,sw*0.2,sh*0.12,"#424242");
+      px(ctx,cx-sw*0.07,sh*0.17,sw*0.14,sh*0.05,"rgba(0,229,255,0.4)");// visor
+      // Shoulder pads
+      pxc(ctx,cx-sw*0.3,sh*0.27,sw*0.07,"#757575");pxc(ctx,cx+sw*0.3,sh*0.27,sw*0.07,"#757575");
+    }else if(raceId==="mothership"){
+      // Massive disc
+      for(let my=sh*0.2;my<sh*0.7;my++){const mw=sw*0.48*Math.sin((my-sh*0.2)/(sh*0.5)*Math.PI);
+        px(ctx,cx-mw,my,mw*2,1,"#311b92");if(my%3===0)px(ctx,cx-mw,my,mw*2,1,"#4527a0");}
+      // Dome
+      pxc(ctx,cx,sh*0.3,sw*0.2,"#4527a0");pxc(ctx,cx,sh*0.28,sw*0.12,"rgba(179,136,255,0.3)");
+      // Lights
+      for(let i=0;i<10;i++){const lx=cx-sw*0.4+i*sw*0.08;pxc(ctx,lx,sh*0.5,2,i%2?"#00e5ff":"#e040fb");}
+      // Bottom beam
+      ctx.fillStyle="rgba(179,136,255,0.08)";ctx.beginPath();ctx.moveTo(cx-sw*0.1,sh*0.65);ctx.lineTo(cx-sw*0.2,sh*0.95);ctx.lineTo(cx+sw*0.2,sh*0.95);ctx.lineTo(cx+sw*0.1,sh*0.65);ctx.fill();
+    }else if(raceId==="titan"){
+      // GIANT humanoid robot
+      // Legs
+      px(ctx,cx-sw*0.18,sh*0.7,sw*0.12,sh*0.25,"#283593");px(ctx,cx+sw*0.06,sh*0.7,sw*0.12,sh*0.25,"#283593");
+      px(ctx,cx-sw*0.2,sh*0.5,sw*0.14,sh*0.22,"#1a237e");px(ctx,cx+sw*0.06,sh*0.5,sw*0.14,sh*0.22,"#1a237e");
+      // Feet
+      px(ctx,cx-sw*0.22,sh*0.93,sw*0.18,sh*0.05,"#283593");px(ctx,cx+sw*0.04,sh*0.93,sw*0.18,sh*0.05,"#283593");
+      // Torso
+      ctx.fillStyle="#1a237e";ctx.beginPath();ctx.moveTo(cx-sw*0.28,sh*0.5);ctx.lineTo(cx-sw*0.2,sh*0.2);ctx.lineTo(cx+sw*0.2,sh*0.2);ctx.lineTo(cx+sw*0.28,sh*0.5);ctx.fill();
+      pxc(ctx,cx,sh*0.38,sw*0.08,"rgba(255,213,79,0.3)");pxc(ctx,cx,sh*0.38,4,"rgba(255,213,79,0.6)");// core
+      // Arms
+      px(ctx,cx-sw*0.38,sh*0.22,sw*0.1,sh*0.35,"#283593");px(ctx,cx+sw*0.28,sh*0.22,sw*0.1,sh*0.35,"#283593");
+      // Weapon hands glow
+      pxc(ctx,cx-sw*0.33,sh*0.58,sw*0.06,"rgba(255,213,79,0.4)");pxc(ctx,cx+sw*0.33,sh*0.58,sw*0.06,"rgba(0,229,255,0.4)");
+      // Head
+      px(ctx,cx-sw*0.1,sh*0.1,sw*0.2,sh*0.12,"#1a237e");
+      px(ctx,cx-sw*0.04,sh*0.12,3,3,"#ff1744");px(ctx,cx+sw*0.02,sh*0.12,3,3,"#ff1744");// red eyes
+      // Shoulder pads
+      pxc(ctx,cx-sw*0.3,sh*0.22,sw*0.08,"#303f9f");pxc(ctx,cx+sw*0.3,sh*0.22,sw*0.08,"#303f9f");
+    }else if(race.t==="mage"){
+      // MAGE: robed figure with glowing hands and magic aura
+      // Robe (wide triangular body)
+      ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(cx-sw*0.05,sh*0.25);ctx.lineTo(cx-sw*0.28,sh*0.95);ctx.lineTo(cx+sw*0.28,sh*0.95);ctx.lineTo(cx+sw*0.05,sh*0.25);ctx.fill();
+      // Robe detail stripe
+      px(ctx,cx-sw*0.02,sh*0.3,sw*0.04,sh*0.6,lt(c,20));
+      // Hood/head
+      ctx.fillStyle=dk(c,20);ctx.beginPath();ctx.arc(cx,sh*0.22,sw*0.15,0,Math.PI*2);ctx.fill();
+      px(ctx,cx-sw*0.12,sh*0.15,sw*0.24,sh*0.1,dk(c,30));// hood shadow
+      // Eyes (glowing)
+      pxc(ctx,cx-sw*0.05,sh*0.22,2,era>=3?"#00e5ff":"#ffeb3b");pxc(ctx,cx+sw*0.05,sh*0.22,2,era>=3?"#00e5ff":"#ffeb3b");
+      // Arms with glowing hands
+      px(ctx,cx-sw*0.3,sh*0.35,sw*0.08,sh*0.25,dk(c,10));px(ctx,cx+sw*0.22,sh*0.35,sw*0.08,sh*0.25,dk(c,10));
+      // Glowing orbs in hands
+      const gc=era>=4?"#7c4dff":era>=3?"#ce93d8":era>=2?"#ffd54f":era>=1?"#4fc3f7":"#ff6f00";
+      pxc(ctx,cx-sw*0.3,sh*0.62,sw*0.06,gc);pxc(ctx,cx+sw*0.26,sh*0.62,sw*0.06,gc);
+      // Magic aura glow
+      ctx.fillStyle=`${gc}33`;ctx.beginPath();ctx.arc(cx,sh*0.5,sw*0.35,0,Math.PI*2);ctx.fill();
+      // Staff
+      px(ctx,cx+sw*0.15,sh*0.2,2,sh*0.75,"#5d4037");
+      pxc(ctx,cx+sw*0.16,sh*0.18,sw*0.05,gc);// staff gem
+    }else{
+      // Generic humanoid (warriors, gunners, soldiers, etc)
+      const sz=race.t==="elite"?1.1:race.t==="healer"?0.85:1;
+      // Boots
+      px(ctx,cx-sw*0.15,sh*0.9,sw*0.12,sh*0.08,era>=3?"#212121":"#3e2723");
+      px(ctx,cx+sw*0.03,sh*0.9,sw*0.12,sh*0.08,era>=3?"#212121":"#3e2723");
+      // Legs
+      const lc=era>=3?"#263238":era>=2?"#455a64":"#5d4037";
+      px(ctx,cx-sw*0.12,sh*0.65,sw*0.09,sh*0.27,lc);px(ctx,cx+sw*0.03,sh*0.65,sw*0.09,sh*0.27,lc);
+      // Belt
+      px(ctx,cx-sw*0.2,sh*0.62,sw*0.4,sh*0.04,era>=3?"#37474f":"#5d4037");
+      px(ctx,cx-sw*0.02,sh*0.61,sw*0.04,sh*0.05,era>=3?"#78909c":"#ffd54f");// buckle
+      // Torso
+      const bc=race.t==="healer"?(era>=3?"#f06292":era>=2?"#e91e63":"#66bb6a"):c;
+      for(let ty=sh*0.3;ty<sh*0.64;ty++){const tw=sw*0.22*sz*Math.sin((ty-sh*0.3)/(sh*0.34)*Math.PI);
+        px(ctx,cx-tw,ty,tw*2,1,bc);px(ctx,cx-tw,ty,1,1,lt(bc,15));}
+      // Arms
+      px(ctx,cx-sw*0.28,sh*0.32,sw*0.08,sh*0.25,era>=3?"#37474f":bc);
+      px(ctx,cx+sw*0.2,sh*0.32,sw*0.08,sh*0.25,era>=3?"#37474f":bc);
+      // Hands
+      const handC=era>=3?"#cfd8dc":"#ffe0b2";
+      pxc(ctx,cx-sw*0.24,sh*0.58,sw*0.04,handC);pxc(ctx,cx+sw*0.24,sh*0.58,sw*0.04,handC);
+      // Head
+      pxc(ctx,cx,sh*0.22,sw*0.12*sz,era>=3?"#cfd8dc":"#ffe0b2");
+      // Eyes
+      const eyeC=era>=4?"#00e5ff":"#111";
+      px(ctx,cx-sw*0.06,sh*0.2,2,2,"#fff");px(ctx,cx+sw*0.02,sh*0.2,2,2,"#fff");
+      px(ctx,cx-sw*0.05,sh*0.21,1,1,eyeC);px(ctx,cx+sw*0.03,sh*0.21,1,1,eyeC);
+      // Helmet by era
+      if(era>=3){for(let hy=sh*0.1;hy<sh*0.18;hy++){const hw=sw*0.13;px(ctx,cx-hw,hy,hw*2,1,"#37474f");}
+        px(ctx,cx-sw*0.14,sh*0.17,sw*0.28,2,"#263238");}
+      else if(era>=2){pxc(ctx,cx,sh*0.14,sw*0.12,"#455a64");}
+      else if(era>=1){pxc(ctx,cx,sh*0.14,sw*0.1,"#6d4c41");}
+      if(era>=4){pxc(ctx,cx,sh*0.4,sw*0.2,"rgba(124,77,255,0.12)");}// energy field
+      // Weapon visual
+      if(era>=2){px(ctx,cx+sw*0.22,sh*0.35,2,sh*0.2,"#546e7a");}
+      // Healer cross
+      if(race.t==="healer"){px(ctx,cx-1,sh*0.4,3,8,"#fff");px(ctx,cx-2.5,sh*0.44,6,2,"#fff");}
+    }
+    // Boss glow
+    if(boss){ctx.fillStyle="rgba(255,213,79,0.06)";ctx.beginPath();ctx.arc(cx,sh*0.5,sw*0.5,0,Math.PI*2);ctx.fill();}
+  });
+}
+
+/* ═══════ AI BRAIN ═══════ */
+function createBrain(){
+  const ab={flank:0,shareAmmo:0,rescue:0,swapWeapon:0,focusFire:0,retreat:0,shieldWall:0,surround:0,healAllies:0,
+    rushTactics:0,deathSquad:0,siegeMode:0,berserkerRage:0,darkRitual:0,swarmIntel:0,titanShield:0,poisonCloud:0};
+  return{gen:0,intel:0,coop:0,aggro:0.5,abilities:ab,disc:[],mem:{weak:[],deaths:0,ammoOut:0,hpHist:[]},
+    evolve(g){this.gen++;
+      const lr=this.gen<=1?0.4:this.gen<=10?(0.8+Math.log2(1+this.gen)*0.6):(1.5+this.gen*0.15);
+      this.intel+=rn(1,3.5)*lr;this.coop+=rn(0.4,1.8)*lr*0.4;
+      const m=this.mem;m.weak=[];
+      for(let x=CX+30;x<W-60;x+=25){let th=0;for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0)th+=Math.max(0,90-Math.abs(h.x-x));if(th<15)m.weak.push(x);}
+      m.hpHist.push(g.hp/g.maxHp);if(m.hpHist.length>30)m.hpHist.shift();
+      const trend=m.hpHist.length>1?m.hpHist[m.hpHist.length-2]-m.hpHist[m.hpHist.length-1]:0;
+      this.aggro=cl(this.aggro+(trend>0?0.04:-0.02)*lr,0.15,3);
+      const td=(k,b2,co)=>{if(this.abilities[k]>0){this.abilities[k]+=rn(0.5,2)*lr;return;}
+        if(Math.random()<b2*(1+this.intel*0.008)*(co?3:0.3)){this.abilities[k]=1;this.disc.push({key:k,gen:this.gen});
+          g.ft.push({x:W/2,y:GY-180,t:`🧠 AI lærte: ${k}!`,life:120,c:"#ff5252"});}};
+      td("flank",0.04,m.weak.length>2);td("shareAmmo",0.03,m.ammoOut>3);td("rescue",0.02,m.deaths>5);
+      td("swapWeapon",0.025,m.ammoOut>2);td("focusFire",0.03,true);td("retreat",0.02,m.deaths>10);
+      td("shieldWall",0.012,true);td("surround",0.015,this.coop>15);td("healAllies",0.01,this.gen>5);
+      if(g.wave>=15){td("rushTactics",0.04,true);td("berserkerRage",0.03,true);td("poisonCloud",0.02,true);}
+      if(g.wave>=20){td("deathSquad",0.03,m.deaths>15);td("siegeMode",0.025,g.hp>g.maxHp*0.5);}
+      if(g.wave>=30){td("darkRitual",0.03,true);td("swarmIntel",0.025,true);td("titanShield",0.02,true);}
+      m.deaths=0;m.ammoOut=0;},
+    can(k){return this.abilities[k]>0;},
+    power(k){return this.abilities[k]||0;},
+  };
+}
+
+/* ═══════ SPAWN ═══════ */
+function spawnMon(wave,boss,brain,wD){
+  const era=getEra(wave);
+  // ALL races available, but current era is 70% likely, adjacent eras 25%, rest 5%
+  const allRaces=Object.entries(RACES);
+  const weighted=[];
+  for(const[k,r] of allRaces){
+    const w=r.era===era?10:Math.abs(r.era-era)===1?4:1;
+    for(let i=0;i<w;i++)weighted.push([k,r]);
+  }
+  // Force healer: every 5th spawn is a healer
+  const forceHealer=wD&&wD.sp>0&&wD.sp%5===0;
+  let[rk,race]=pk(weighted);
+  if(forceHealer){const healers=allRaces.filter(([,r])=>r.t==="healer");if(healers.length)[rk,race]=pk(healers);}
+  if(boss){const big=allRaces.filter(([,r])=>r.t==="tank"||r.t==="boss"||r.t==="elite"||r.t==="siege");if(big.length)[rk,race]=pk(big);}
+  let hpM,dmgM,spdM;
+  if(wave<=2){hpM=1+wave*0.15;dmgM=0.7;spdM=0.6;}
+  else if(wave<=5){hpM=1+wave*0.25;dmgM=0.8+wave*0.1;spdM=0.75+wave*0.02;}
+  else if(wave<=10){hpM=2+wave*0.4;dmgM=1+wave*0.15;spdM=0.9+wave*0.015;}// HARD after 5
+  else if(wave<=20){hpM=4+(wave-10)*0.6;dmgM=2.5+(wave-10)*0.2;spdM=1.05+wave*0.01;}
+  else{const ow=wave-20;hpM=10+ow*1.2+ow*ow*0.06;dmgM=4.5+ow*0.4;spdM=1.2+ow*0.02;}
+  if(wD&&wD.elite){hpM*=1.8;dmgM*=1.5;}
+  if(wD&&wD.horde){hpM*=0.5;spdM*=1.3;}
+  if(wD&&wD.nightmare){hpM*=2;dmgM*=1.7;spdM*=1.15;}
+  hpM+=brain.intel*0.006;
+  const isElite=!boss&&brain.can("deathSquad")&&Math.random()<0.15;
+  if(isElite){hpM*=3;dmgM*=2;spdM*=0.8;}
+  const arm=Math.min(~~(wave*0.8+era*4+(wave>20?(wave-20)*1.5:0)),80),bm=boss?3+wave*0.2:1,sc=boss?1.5:isElite?1.2:1;
+  const wk=pk(race.wpns);const wd=WPNS[wk];
+  const wpn={...wd,key:wk,cur:wd.am,d:Math.max(1,~~(wd.d*dmgM)),hl:wd.hl?~~(wd.hl*dmgM):0};
+  let wpn2=null;
+  if(brain.can("swapWeapon")&&Math.random()<0.3){const w2k=pk(race.wpns.filter(w=>w!==wk));if(w2k){const w2=WPNS[w2k];wpn2={...w2,key:w2k,cur:w2.am,d:Math.max(1,~~(w2.d*dmgM))};};}
+  const shield=boss&&brain.can("titanShield")?~~(race.hp*hpM*bm*0.4):0;
+  return{x:W+rn(5,60),y:GY+rn(-12,12),hp:~~(race.hp*hpM*bm),mhp:~~(race.hp*hpM*bm),
+    bSpd:race.spd*spdM*(boss?0.6:1),rew:~~(race.r*(1+wave*0.03)*sc),w:race.w*sc,h:race.h*sc,
+    raceId:rk,col:race.c,era:race.era,rType:race.t,wpn,wpn2,useW2:false,
+    sl:0,stn:0,arm,dot:0,id:Math.random(),f:~~rn(0,100),boss,isElite,shield,maxShield:shield,
+    role:"attack",morale:1,carrying:null,carried:false,retreating:false,retreated:false,
+    isFlying:race.t==="fly",aCd:~~rn(0,20),atCastle:false};
+}
+
+/* ═══════ MONSTER AI ═══════ */
+function monsterTick(en,g){
+  if(en.stn>0){en.stn--;return;}if(en.carried)return;
+  const brain=g.brain,spd=en.sl>0?en.bSpd*0.22:en.bSpd;
+  const wpn=en.useW2&&en.wpn2?en.wpn2:en.wpn;
+  en.f++;en.sl=Math.max(0,en.sl-1);if(en.dot>0){en.hp-=1;en.dot--;}
+  // Find targets
+  let nearH=null,nearD=9999,nearM=null,nearMD=9999;
+  for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0){const d=D(en.x,en.y,h.x,h.y);if(d<nearD){nearD=d;nearH=h;}}
+  for(const m of g.melees)if(m&&m.hp>0){const d=D(en.x,en.y,m.x,m.y);if(d<nearMD){nearMD=d;nearM=m;}}
+  const closestH=nearMD<nearD?nearM:nearH;const closestD=Math.min(nearD,nearMD);
+  // ═══ HEALER AI: stay behind, heal wounded allies ═══
+  if(en.rType==="healer"&&wpn&&wpn.hl>0){en.aCd--;if(en.aCd<=0){let tgt=null,lp=0.9;
+    for(const e2 of g.enemies){if(e2===en||e2.carried||e2.hp<=0)continue;const p=e2.hp/e2.mhp;if(p<lp&&D(en.x,en.y,e2.x,e2.y)<(wpn.r||120)){lp=p;tgt=e2;}}
+    if(tgt){en.aCd=wpn.rt;tgt.hp=Math.min(tgt.mhp,tgt.hp+wpn.hl);
+      g.parts.push({x:tgt.x,y:tgt.y-tgt.h/2,vx:0,vy:-1,life:15,c:"#66bb6a",r:3});
+      g.ft.push({x:tgt.x,y:tgt.y-tgt.h-8,t:`+${wpn.hl}`,life:18,c:"#66bb6a"});}}
+    // Healers stay behind other monsters
+    const frontAlly=g.enemies.find(e=>e!==en&&!e.carried&&e.hp>0&&e.x<en.x-20);
+    if(frontAlly){en.x-=spd*0.3;}else{en.x-=spd*0.6;}
+    en.y=cl(en.y,GY-22,GY+14);if(en.x<CX+60){en.atCastle=true;en.x=CX+60;}return;}
+  // Swap weapon if empty
+  if(brain.can("swapWeapon")&&en.wpn2&&wpn&&wpn.cur<=0&&!en.useW2)en.useW2=true;
+  // Retreat if almost dead
+  if(brain.can("retreat")&&en.hp<en.mhp*0.15&&!en.retreated){en.retreating=true;}
+  if(en.retreating){en.x+=spd*0.5;en.hp=Math.min(en.mhp,en.hp+0.4);
+    if(en.hp>en.mhp*0.5||en.x>=W-20){en.retreating=false;en.retreated=true;}return;}
+  // At castle = smash it
+  if(en.atCastle){en.aCd--;if(en.aCd<=0){const dm=wpn?Math.max(2,~~(wpn.d*0.5)):3;g.hp-=dm;en.aCd=wpn?~~(wpn.rt*0.8):35;
+    for(let p=0;p<4;p++)g.parts.push({x:CX+rn(5,35),y:GY-rn(10,50),vx:rn(-3,3),vy:rn(-3,0),life:16,c:"#ff1744",r:3});
+    g.ft.push({x:CX+rn(10,40),y:GY-rn(30,70),t:`-${dm}`,life:25,c:"#ff1744"});}en.x=CX+35+Math.sin(en.f*0.15)*4;return;}
+  // ═══ RANGED AI: pistol/rifle monsters HOLD POSITION and shoot from distance ═══
+  const isRanged=!wpn?.m&&wpn?.sp&&wpn.r>100&&(en.rType==="ranged"||en.rType==="splash"||en.rType==="mage");
+  const holdRange=isRanged?Math.max(wpn.r*0.7,120):0;
+  let mx=-spd,my=0;
+  if(isRanged&&en.x-CX<holdRange+80&&closestH){
+    // STOP and hold position — don't rush castle
+    mx=0;
+    // Sidestep to avoid melee heroes
+    if(nearM&&nearMD<60){my+=(en.y>nearM.y?1:-1)*spd*0.8;mx=spd*0.4;}// dodge away
+    // Back up if too close
+    if(closestD<holdRange*0.5)mx=spd*0.5;
+  }
+  // ═══ TANK AI: rush forward to protect ranged allies ═══
+  if(en.rType==="tank"||en.rType==="siege"){
+    const rangedBehind=g.enemies.some(e=>e!==en&&!e.carried&&(e.rType==="ranged"||e.rType==="splash")&&e.x>en.x);
+    if(rangedBehind)mx=-spd*1.2;// tanks rush faster to be frontline
+  }
+  // ═══ FAST AI: dodge and weave ═══
+  if(en.rType==="fast"||en.rType==="swarm"){
+    my+=Math.sin(en.f*0.12)*spd*0.5;// zigzag pattern
+    if(nearM&&nearMD<50)my+=(en.y>nearM.y?1:-1)*spd;// dodge melee heroes
+  }
+  // ═══ ELITE AI: focus weakest hero ═══
+  if(en.rType==="elite"&&closestH){
+    let weakH=null,weakHP=Infinity;
+    for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0&&h.hp<weakHP){weakHP=h.hp;weakH=h;}
+    for(const m of g.melees)if(m&&m.hp>0&&m.hp<weakHP){weakHP=m.hp;weakH=m;}
+    if(weakH){const a=Math.atan2(weakH.y-en.y,weakH.x-en.x);mx+=Math.cos(a)*spd*0.2;my+=Math.sin(a)*spd*0.2;}
+  }
+  // ═══ FLY AI: fly high, dive to attack ═══
+  if(en.isFlying){en.y=GY-30+Math.sin(en.f*0.04)*15;
+    if(isRanged&&closestD<wpn.r)mx=0;// hovering gunship
+  }
+  // ═══ COOPERATION: nearby allies buff each other ═══
+  if(en.f%60===0){
+    const allies=g.enemies.filter(e=>e!==en&&!e.carried&&e.hp>0&&D(en.x,en.y,e.x,e.y)<80);
+    // Group morale: more allies = braver
+    en.morale=cl(0.8+allies.length*0.06,0.5,1.5);
+    // Tanks near ranged = ranged shoot faster
+    if(isRanged&&allies.some(a=>a.rType==="tank"||a.rType==="siege"))en.aCd=Math.max(0,en.aCd-3);
+    // Share target info: if an ally is attacking, others focus same area
+    if(brain.can("focusFire")&&allies.length>0){
+      const attacking=allies.find(a=>a.atCastle);
+      if(attacking&&!en.atCastle)mx=-spd*1.1;// rush to help
+    }
+  }
+  // ═══ BRAIN ABILITIES ═══
+  if(brain.can("surround")&&nearM&&nearMD<140){const a=Math.atan2(en.y-nearM.y,en.x-nearM.x)+0.05;mx+=Math.cos(a)*spd*0.3;my+=Math.sin(a)*spd*0.3;}
+  if(brain.can("berserkerRage")&&en.hp<en.mhp*0.3){mx*=(isRanged?1:1.8);en.aCd=Math.max(0,en.aCd-1);
+    if(en.f%120===0)g.parts.push({x:en.x,y:en.y-en.h,vx:0,vy:-2,life:15,c:"#ff1744",r:4});}
+  if(brain.can("poisonCloud")&&en.f%90===0){for(const m of g.melees)if(m&&m.hp>0&&Math.hypot(m.x-en.x,m.y-en.y)<60)m.hp-=~~(1+brain.power("poisonCloud")*0.3);}
+  if(brain.can("siegeMode")&&!isRanged&&Math.random()<0.3)mx=-spd*1.2;
+  if(brain.can("swarmIntel")){const nearby=g.enemies.filter(e=>e!==en&&Math.hypot(e.x-en.x,e.y-en.y)<40).length;
+    if(nearby>2)my+=(en.y>GY?-1:1)*spd*0.4;}
+  if(brain.can("rushTactics")&&en.f<30)mx*=1.5;
+  if(brain.can("flank")&&brain.mem.weak.length>0&&!isRanged){
+    const wx=brain.mem.weak[~~(Math.random()*brain.mem.weak.length)];
+    my+=(wx>en.y?1:-1)*spd*0.2;// move toward weak spot
+  }
+  // Shield visual
+  if(en.shield>0&&en.f%60===0)g.parts.push({x:en.x+rn(-8,8),y:en.y-en.h/2,vx:0,vy:-1,life:20,c:"#42a5f5",r:3});
+  // Apply movement
+  if(!en.isFlying)en.y=cl(en.y+my,GY-22,GY+14);
+  en.x+=mx*en.morale;if(en.x<CX+35){en.atCastle=true;en.x=CX+35+rn(0,15);en.aCd=0;return;}
+  // ═══ SHOOTING ═══
+  if(!wpn||wpn.cur<=0)return;en.aCd--;if(en.aCd>0)return;
+  // Melee attack
+  const meleeTarget=nearM&&nearMD<(wpn.r||30)+en.w/2+10?nearM:nearH&&nearD<(wpn.r||30)+en.w/2+10?nearH:null;
+  if(wpn.m&&meleeTarget){const md=D(en.x,en.y,meleeTarget.x,meleeTarget.y);
+    if(md<(wpn.r||30)+en.w/2+10){en.aCd=wpn.rt;meleeTarget.hp-=Math.max(1,wpn.d);wpn.cur--;
+      g.parts.push({x:meleeTarget.x,y:meleeTarget.y-10,vx:rn(-2,2),vy:-2,life:12,c:"#ff1744",r:3});}
+  // Ranged attack — shoot heroes AND melee defenders
+  }else if(!wpn.m&&closestH&&closestD<wpn.r){en.aCd=wpn.rt;wpn.cur--;
+    const tx=closestH.x,ty=closestH.y-12;
+    // Mage casting particles
+    if(en.rType==="mage"){for(let p=0;p<4;p++)g.parts.push({x:en.x+rn(-6,6),y:en.y-en.h/2+rn(-6,6),vx:rn(-2,2),vy:rn(-3,-1),life:15,c:en.col,r:rn(2,4)});}
+    if(wpn.sp){const a=Math.atan2(ty-(en.y-en.h/2),tx-en.x);
+      g.eProj.push({x:en.x,y:en.y-en.h/2,vx:Math.cos(a)*(wpn.sp||4),vy:Math.sin(a)*(wpn.sp||4),dmg:wpn.d,c:en.rType==="mage"?en.col:en.col,life:90,r:wpn.spl?5:en.rType==="mage"?4:3,spl:wpn.spl,sl:wpn.sl,dot:wpn.dot,stn:wpn.stn});}}
+}
+
+/* ═══════ HERO AI ═══════ */
+function heroTick(h,g){
+  if(h.hp<=0)return;let tar=null,minD=9999;
+  for(const en of g.enemies){if(en.carried)continue;const d=D(h.x,h.y,en.x,en.y);if(d<minD){minD=d;tar=en;}}
+  const home=h.homeX||CX+60;
+  if(tar&&minD<380){const dx=tar.x-h.x,dy=tar.y-h.y,di=Math.max(1,Math.sqrt(dx*dx+dy*dy));
+    if(di>h.range){h.x+=(dx/di)*h.spd;h.y+=(dy/di)*h.spd*0.3;}
+    h.y=cl(h.y,GY-25,GY+10);h.facing=dx>0?1:-1;
+    if(minD<h.range+(tar.w||20)/2+10){h.cd=Math.max(0,h.cd-1);if(h.cd<=0){
+      let dmg=h.damage;const forge=g.bSlots.find(b=>b&&b.id==="forge");if(forge)dmg=~~(dmg*BLDGS.forge.ef(forge.lvl).mul);
+      const actual=Math.max(1,dmg-(tar.arm||0));tar.hp-=actual;h.cd=h.fireRate;
+      g.ft.push({x:tar.x,y:tar.y-tar.h-8,t:`-${actual}`,life:22,c:"#ef5350"});
+      if(h.heals)g.hp=Math.min(g.hp+h.heals,g.maxHp);
+      if(h.splash){for(const e2 of g.enemies)if(e2!==tar&&!e2.carried&&D(tar.x,tar.y,e2.x,e2.y)<h.splash)e2.hp-=~~(actual*0.5);}}}
+  }else{if(Math.abs(h.x-home)>5)h.x+=(home-h.x)*0.04;h.y+=(GY-h.y)*0.05;h.facing=1;}
+}
+
+/* ═══════ MAIN ═══════ */
+function BiffauerX(){
+  const cvs=useRef(null),gR=useRef(null),aR=useRef(null),spdRef=useRef(1),uiRef=useRef(null);
+  // Castle: floors array, each floor has 3 slots. Start with 1 floor.
+  const[ui,setUi]=useState({money:120,hp:100,maxHp:100,wave:0,phase:"menu",score:0,kills:0,
+    cLvl:1,cAtk:0,dia:0,bldgs:[null,null,null,null],intel:0,disc:[],spd:1,era:0,
+    floors:[[null,null,null]],// start 1 floor, 3 slots
+    melees:[null,null],sel:null,selM:null,selB:null,wA:false,shop:null,showTree:false,shopTab:"alle",
+    classPick:null,classSkills:[],classSkillPts:0,
+    saves:[null,null,null,null],savesLoaded:false,activeSlot:null});
+
+  const sync=useCallback(()=>{const g=gR.current;if(!g)return;
+    setUi(u=>({...u,money:g.money,hp:g.hp,maxHp:g.maxHp,wave:g.wave,score:g.score,kills:g.kills,
+      cLvl:g.cLvl,cAtk:g.cAtk,dia:g.dia,bldgs:g.bSlots.map(b=>b?{...b}:null),
+      intel:g.brain.intel,disc:g.brain.disc.slice(-6),era:getEra(g.wave),
+      floors:g.floors.map(f=>f.map(s=>s?{...s}:null)),melees:g.melees.map(m=>m?{...m}:null),wA:g.waveActive,
+      classPick:g.classPick,classSkills:[...(g.classSkills||[])],classSkillPts:g.classSkillPts||0}));},[]);
+
+  const init=useCallback(()=>{gR.current={cLvl:1,floors:[[null,null,null]],melees:[null,null],
+    enemies:[],proj:[],eProj:[],parts:[],ft:[],summons:[],money:120,hp:100,maxHp:100,wave:0,wD:null,waveActive:false,
+    score:0,kills:0,cUC:80,cAtk:0,cAC:0,cAU:40,tick:0,mUC:60,dia:0,
+    bSlots:[null,null,null,null],brain:createBrain(),towerCd:0,castleCd:0,shake:0,
+    classPick:null,classSkills:[],classSkillPts:0};},[]);
+
+  // ═══ SAVE/LOAD SYSTEM ═══
+  const saveGame=useCallback(async(slot)=>{
+    const g=gR.current;if(!g)return;
+    const heroData=(h)=>h?{type:h.type,level:h.level,damage:h.damage,range:h.range,fireRate:h.fireRate,
+      hp:h.hp,maxHp:h.maxHp,spd:h.spd,armor:h.armor,diaLvl:h.diaLvl,hasS:h.hasS,
+      splash:h.splash,slow:h.slow,healAmt:h.healAmt,chain:h.chain,dotH:h.dotH,drain:h.drain,
+      rsp:h.rsp,homeX:h.homeX,slot:h.slot,floor:h.floor,crit:h.crit,pierce:h.pierce}:null;
+    const data={
+      v:2,slot,date:new Date().toISOString(),
+      wave:g.wave,money:g.money,hp:g.hp,maxHp:g.maxHp,score:g.score,kills:g.kills,
+      cLvl:g.cLvl,cAtk:g.cAtk,cAC:g.cAC,cUC:g.cUC,cAU:g.cAU,mUC:g.mUC,dia:g.dia,
+      floors:g.floors.map(f=>f.map(heroData)),
+      melees:g.melees.map(heroData),
+      bSlots:g.bSlots.map(b=>b?{...b}:null),
+      brain:{gen:g.brain.gen,intel:g.brain.intel,coop:g.brain.coop,aggro:g.brain.aggro,
+        abilities:{...g.brain.abilities},disc:g.brain.disc.slice(-20)},
+      classPick:g.classPick,classSkills:[...(g.classSkills||[])],classSkillPts:g.classSkillPts||0,
+    };
+    try{await window.storage.set(`save:${slot}`,JSON.stringify(data));
+      const saves=[...ui.saves];saves[slot]={wave:g.wave,money:g.money,score:g.score,date:data.date,
+        heroes:g.floors.flat().filter(h=>h).length+g.melees.filter(m=>m).length,classPick:g.classPick};
+      setUi(u=>({...u,saves}));
+      g.ft.push({x:W/2,y:GY-140,t:`💾 Lagret i spor ${slot+1}!`,life:60,c:"#66bb6a"});
+    }catch(e){g.ft.push({x:W/2,y:GY-140,t:"❌ Lagring feilet!",life:60,c:"#ef5350"});}
+  },[ui.saves]);
+
+  const loadGame=useCallback(async(slot)=>{
+    try{const res=await window.storage.get(`save:${slot}`);
+      if(!res)return false;
+      const d=JSON.parse(res.value);
+      init();const g=gR.current;
+      g.wave=d.wave;g.money=d.money;g.hp=d.hp;g.maxHp=d.maxHp;g.score=d.score;g.kills=d.kills;
+      g.cLvl=d.cLvl;g.cAtk=d.cAtk;g.cAC=d.cAC||0;g.cUC=d.cUC;g.cAU=d.cAU;g.mUC=d.mUC;g.dia=d.dia;
+      // Restore floors
+      g.floors=d.floors.map((f,fi)=>f.map((h,si)=>{if(!h)return null;
+        const hd=HEROES[h.type];if(!hd)return null;
+        return{...h,cd:0,deadTimer:0,specCd:hd.spec?~~(hd.spec.cd*0.5):0,specActive:0,
+          x:CX-8+si*16,y:GY-28-fi*FH,facing:1,heals:hd.heals||0,castleHpB:0,healBonus:0};}));
+      // Restore melees
+      g.melees=d.melees.map((m,mi)=>{if(!m)return null;
+        const hd=HEROES[m.type];if(!hd)return null;
+        return{...m,cd:0,deadTimer:0,specCd:hd.spec?~~(hd.spec.cd*0.5):0,specActive:0,
+          x:m.homeX||CX+50+mi*30,y:GY,facing:1,heals:hd.heals||0,castleHpB:0,healBonus:0};});
+      // Pad melees if needed
+      while(g.melees.length<2)g.melees.push(null);
+      g.bSlots=d.bSlots||[null,null,null,null];
+      // Restore brain
+      if(d.brain){g.brain.gen=d.brain.gen;g.brain.intel=d.brain.intel;g.brain.coop=d.brain.coop;
+        g.brain.aggro=d.brain.aggro;g.brain.disc=d.brain.disc||[];
+        for(const[k,v]of Object.entries(d.brain.abilities||{}))g.brain.abilities[k]=v;}
+      g.classPick=d.classPick;g.classSkills=d.classSkills||[];g.classSkillPts=d.classSkillPts||0;
+      Object.keys(spriteCache).forEach(k=>delete spriteCache[k]);
+      setUi(u=>({...u,phase:"playing",sel:null,selM:null,shop:null,activeSlot:slot}));sync();
+      return true;
+    }catch(e){return false;}
+  },[init,sync]);
+
+  const deleteSave=useCallback(async(slot)=>{
+    try{await window.storage.delete(`save:${slot}`);
+      const saves=[...ui.saves];saves[slot]=null;setUi(u=>({...u,saves}));
+    }catch(e){}
+  },[ui.saves]);
+
+  const loadSaveList=useCallback(async()=>{
+    const saves=[null,null,null,null];
+    for(let i=0;i<4;i++){
+      try{const res=await window.storage.get(`save:${i}`);
+        if(res){const d=JSON.parse(res.value);
+          saves[i]={wave:d.wave,money:d.money,score:d.score,date:d.date,
+            heroes:d.floors.flat().filter(h=>h).length+(d.melees||[]).filter(m=>m).length,classPick:d.classPick};}
+      }catch(e){}}
+    setUi(u=>({...u,saves,savesLoaded:true}));
+  },[]);
+
+  useEffect(()=>{if(!ui.savesLoaded)loadSaveList();},[ui.savesLoaded,loadSaveList]);
+  useEffect(()=>{uiRef.current=ui;},[ui]);
+
+  const startNew=useCallback((slot)=>{init();Object.keys(spriteCache).forEach(k=>delete spriteCache[k]);
+    setUi(u=>({...u,phase:"playing",sel:null,selM:null,shop:null,activeSlot:slot}));sync();},[init,sync]);
+
+  const startWave=useCallback(()=>{const g=gR.current;if(!g||g.waveActive)return;g.wave++;
+    // DIFFICULTY RAMP: gentle 1-20, BRUTAL after 20
+    const w=g.wave;let cnt,intv;
+    if(w<=2){cnt=3+w*2;intv=55;}
+    else if(w<=5){cnt=6+w*3;intv=Math.max(25,40-w*3);}
+    else if(w<=10){cnt=18+w*5;intv=Math.max(12,22-w);}// HARDER after 5
+    else if(w<=20){cnt=50+w*6;intv=Math.max(6,14-w*0.4);}// HARD
+    else if(w<=30){cnt=120+~~((w-20)*14);intv=Math.max(3,8-(w-20)*0.4);}// BRUTAL
+    else if(w<=40){cnt=260+~~((w-30)*22);intv=Math.max(2,5-(w-30)*0.2);}// INSANE
+    else{cnt=480+~~((w-40)*30);intv=Math.max(1,3-(w-40)*0.1);}// IMPOSSIBLE
+    // Multiple bosses after wave 20
+    const bossCount=w<=5?1:w<=15?2:w<=25?3:4;
+    const isBossWave=w%3===0;
+    g.wD={total:cnt,sp:0,timer:0,int:intv,boss:isBossWave,bossCount,bsp:0,doneTimer:0,
+      elite:w>5&&w%2===0,// elite every 2nd wave after 5
+      horde:w>12&&w%4===0,// horde every 4th after 12
+      nightmare:w>25};// nightmare after 25
+    g.enemies.push(spawnMon(g.wave,false,g.brain,g.wD));g.wD.sp++;g.waveActive=true;
+    const era=getEra(g.wave);
+    const diff=w<=2?"Lett":w<=5?"Normal":w<=10?"⚠ Vanskelig":w<=20?"💀 Brutalt":w<=30?"☠ Helvete":"🔥 UMULIG";
+    g.ft.push({x:W/2,y:GY-120,t:`⚔ Bølge ${w} — ${ERAS[era].icon} ${ERAS[era].name} [${diff}]`,life:80,c:w>30?"#ff1744":w>20?"#ff6d00":ERAS[era].col});
+    if(g.wD.elite)g.ft.push({x:W/2,y:GY-100,t:"⭐ ELITE-BØLGE! Sterkere fiender!",life:70,c:"#ffd54f"});
+    if(g.wD.horde)g.ft.push({x:W/2,y:GY-80,t:"🐺 HORDE! Masse fiender!",life:70,c:"#ff5722"});
+    if(g.wD.nightmare)g.ft.push({x:W/2,y:GY-60,t:"💀 NIGHTMARE! Alt er farlig!",life:70,c:"#d50000"});
+    sync();},[sync]);
+
+  const retryWave=useCallback(()=>{const g=gR.current;if(!g||g.waveActive||g.wave<1)return;
+    g.wave=Math.max(0,g.wave-1);g.hp=g.maxHp;for(const fl of g.floors)for(const h of fl)if(h&&h.maxHp)h.hp=h.maxHp;
+    for(const m of g.melees)if(m)m.hp=m.maxHp;g.enemies=[];g.eProj=[];g.summons=[];startWave();},[startWave]);
+
+  const upgC=useCallback(()=>{const g=gR.current;if(!g||g.money<g.cUC)return;g.money-=g.cUC;g.cLvl++;
+    if(g.floors.length<4){g.floors.push([null,null,null]);}else{g.maxHp+=60;g.hp=Math.min(g.hp+60,g.maxHp);}
+    g.cUC=~~(g.cUC*1.6);sync();},[sync]);
+  const upgA=useCallback(()=>{const g=gR.current;if(!g||g.money<g.cAU)return;g.money-=g.cAU;g.cAtk++;g.cAU=~~(g.cAU*1.5);sync();},[sync]);
+  const addM=useCallback(()=>{const g=gR.current;if(!g||g.money<g.mUC)return;g.money-=g.mUC;g.melees.push(null);g.mUC=~~(g.mUC*1.5);sync();},[sync]);
+
+  // Check if hero type already placed
+  const heroExists=useCallback((ht)=>{const g=gR.current;if(!g)return false;
+    for(const fl of g.floors)for(const h of fl)if(h&&h.type===ht)return true;
+    for(const m of g.melees)if(m&&m.type===ht)return true;return false;},[]);
+
+  const placeH=useCallback((fi,si,ht,isM)=>{const g=gR.current;if(!g)return;const hd=HEROES[ht];if(g.money<hd.cost)return;
+    if(heroExists(ht))return;// Only 1 of each!
+    g.money-=hd.cost;
+    const u={type:ht,level:0,damage:hd.dmg,range:hd.rng,fireRate:hd.fr,cd:0,
+      hp:hd.hp||50,maxHp:hd.hp||50,// ranged heroes get 50 HP base
+      x:CX+30+si*24,y:GY,homeX:CX+30+si*24,spd:hd.spd||1.5,facing:1,slot:si,floor:fi,heals:hd.heals||0,
+      splash:hd.spl,slow:hd.slow,healAmt:hd.healAmt,chain:hd.chain,dotH:hd.dotH,drain:hd.drain,
+      rsp:hd.rsp||600,deadTimer:0,armor:0,hasS:false,diaLvl:0,specCd:hd.spec?~~(hd.spec.cd*0.3+Math.random()*hd.spec.cd*0.4):0,specActive:0,
+      crit:0,pierce:0,castleHpB:0,healBonus:0};
+    if(isM)g.melees[si]=u;else g.floors[fi][si]=u;sync();},[sync,heroExists]);
+
+  const upgH=useCallback((fi,si,isM)=>{const g=gR.current;if(!g)return;
+    const hero=isM?g.melees[si]:g.floors[fi][si];if(!hero)return;
+    const hd=HEROES[hero.type];const c=~~((30+hero.level*24)*hd.um);if(g.money<c)return;g.money-=c;hero.level++;
+    applySkills(hero,gR.current);sync();},[sync]);
+
+  const sellH=useCallback((fi,si,isM)=>{const g=gR.current;if(!g)return;
+    const hero=isM?g.melees[si]:g.floors[fi][si];if(!hero)return;
+    g.money+=~~(HEROES[hero.type].cost*0.5);if(isM)g.melees[si]=null;else g.floors[fi][si]=null;sync();},[sync]);
+
+  // Diamond: 3 levels per hero, costs 3→5→8
+  const DIA_COSTS=[3,5,8];
+  const diaUpgrade=useCallback((fi,si,isM,path)=>{const g=gR.current;if(!g)return;
+    const hero=isM?g.melees[si]:g.floors[fi][si];if(!hero||hero.diaLvl>=3)return;
+    const cost=DIA_COSTS[hero.diaLvl];if(g.dia<cost)return;g.dia-=cost;hero.diaLvl++;
+    const hd=HEROES[hero.type];
+    // Each level gives a significant boost
+    if(path===0){hero.damage=~~(hero.damage*1.5);hero.fireRate=Math.max(3,~~(hero.fireRate*0.8));}
+    else{if(hero.maxHp){hero.maxHp=~~(hero.maxHp*1.6);hero.hp=hero.maxHp;}hero.range=~~(hero.range*1.25);hero.damage=~~(hero.damage*1.3);}
+    if(hero.diaLvl>=1)hero.hasS=true;
+    g.ft.push({x:W/2,y:GY-100,t:`💎 ${hd.n} Lv${hero.diaLvl}!`,life:80,c:"#b388ff"});
+    applySkills(hero,gR.current);sync();},[sync]);
+
+  // Spend class skill point on a node in the global class tree
+  const spendSkill=useCallback((nodeId)=>{const g=gR.current;if(!g||!g.classPick||g.classSkillPts<=0)return;
+    const tree=getClassTree(g.classPick);const node=tree.find(n=>n.id===nodeId);if(!node)return;
+    if(g.classSkills.includes(nodeId))return;// already unlocked
+    for(const req of node.req)if(!g.classSkills.includes(req))return;// prereqs not met
+    g.classSkills.push(nodeId);g.classSkillPts--;
+    // Re-apply to ALL heroes of this class
+    for(const fl of g.floors)for(const h of fl)if(h&&HEROES[h.type]?.cls===g.classPick)applySkills(h,g);
+    for(const m of g.melees)if(m&&HEROES[m.type]?.cls===g.classPick)applySkills(m,g);
+    g.ft.push({x:W/2,y:GY-80,t:`🌟 ${node.n}!`,life:60,c:"#ffd54f"});sync();},[sync]);
+
+  const pickClass=useCallback((cls)=>{const g=gR.current;if(!g||g.classPick)return;
+    g.classPick=cls;g.ft.push({x:W/2,y:GY-120,t:`${CLASSES[cls].n} valgt!`,life:90,c:CLASSES[cls].c});sync();},[sync]);
+
+  const placeBldg=useCallback((si,bid)=>{const g=gR.current;if(!g)return;const b=BLDGS[bid];if(g.money<b.bc)return;g.money-=b.bc;g.bSlots[si]={id:bid,lvl:1};sync();},[sync]);
+  const upgBldg=useCallback((si)=>{const g=gR.current;if(!g)return;const b=g.bSlots[si];if(!b)return;const def=BLDGS[b.id];if(b.lvl>=def.mx)return;const cost=~~(def.bc*(1+b.lvl*0.5));if(g.money<cost)return;g.money-=cost;b.lvl++;sync();},[sync]);
+
+  const useSpec=useCallback((fi,si,isM)=>{const g=gR.current;if(!g)return;
+    const hero=isM?g.melees[si]:g.floors[fi]?.[si];if(!hero||hero.specCd>0||hero.hp<=0)return;
+    const hd=HEROES[hero.type];if(!hd.spec)return;hero.specCd=hd.spec.cd;
+    const type=hero.type;
+    // Execute special ability
+    if(type==="archer"){for(let i=0;i<10;i++){const en=g.enemies[~~(Math.random()*g.enemies.length)];if(en&&!en.carried)en.hp-=hero.damage;}}
+    else if(type==="sniper"){const big=g.enemies.reduce((a,b)=>(!a||b.hp>a.hp)?b:a,null);if(big)big.hp=0;}
+    else if(type==="wizard"){for(const en of g.enemies)if(!en.carried&&D(hero.x||CX,hero.y||GY,en.x,en.y)<200)en.hp-=hero.damage*3;
+      for(let i=0;i<12;i++)g.parts.push({x:(hero.x||CX)+rn(-60,60),y:GY+rn(-60,0),vx:rn(-3,3),vy:rn(-5,-1),life:25,c:"#42a5f5",r:5});}
+    else if(type==="healer"||type==="paladin"){for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0)h.hp=h.maxHp;
+      for(const m of g.melees)if(m&&m.hp>0)m.hp=m.maxHp;g.hp=Math.min(g.hp+~~(g.maxHp*0.3),g.maxHp);}
+    else if(type==="cannon_h"){for(let i=0;i<5;i++){const ex=rn(CX+100,W-50),ey=GY+rn(-15,5);
+      for(const en of g.enemies)if(!en.carried&&D(ex,ey,en.x,en.y)<70)en.hp-=hero.damage*2;
+      for(let p=0;p<8;p++)g.parts.push({x:ex+rn(-20,20),y:ey+rn(-20,0),vx:rn(-4,4),vy:rn(-5,-1),life:20,c:"#ff6f00",r:4});}}
+    else if(type==="necro"){for(const en of g.enemies){if(!en.carried){const dr=~~(en.mhp*0.1);en.hp-=dr;g.hp=Math.min(g.maxHp,g.hp+~~(dr*0.3));}}
+      // Summon 3 zombie minions
+      for(let i=0;i<3;i++)g.summons.push({x:(hero.x||CX+60)+rn(20,80),y:GY+rn(-10,10),hp:30+hero.damage*2,mhp:30+hero.damage*2,
+        dmg:hero.damage,spd:1.2,rng:35,life:480,type:"zombie",c:"#7e57c2",w:14,h:20,cd:0,fr:28,owner:hero.type});}
+    else if(type==="summoner"){
+      // Summon a DEMON — big, tanky, strong
+      g.summons.push({x:(hero.x||CX+60)+rn(30,100),y:GY+rn(-8,8),hp:80+hero.damage*5,mhp:80+hero.damage*5,
+        dmg:hero.damage*3,spd:1.5,rng:45,life:540,type:"demon",c:"#d50000",w:22,h:30,cd:0,fr:24,owner:hero.type});
+      g.ft.push({x:(hero.x||CX+60)+50,y:GY-40,t:"👹 DEMON!",life:60,c:"#d50000"});
+      for(let i=0;i<10;i++)g.parts.push({x:(hero.x||CX+60)+rn(20,80),y:GY+rn(-20,5),vx:rn(-3,3),vy:rn(-5,-1),life:20,c:"#d50000",r:5});}
+    else if(type==="warlock"){
+      // Summon 2 shadow imps
+      for(let i=0;i<2;i++)g.summons.push({x:(hero.x||CX+60)+rn(20,90),y:GY+rn(-10,10),hp:40+hero.damage*2,mhp:40+hero.damage*2,
+        dmg:hero.damage*2,spd:2.5,rng:30,life:360,type:"imp",c:"#4a148c",w:12,h:16,cd:0,fr:16,owner:hero.type});
+      for(const en of g.enemies)if(!en.carried&&D(hero.x||CX,hero.y||GY,en.x,en.y)<200)en.hp-=hero.damage;}
+    else if(type==="demon_lord"){
+      // Summon hellfire demons + AOE
+      g.summons.push({x:(hero.x||CX)+rn(30,80),y:GY+rn(-8,8),hp:100+hero.damage*4,mhp:100+hero.damage*4,
+        dmg:hero.damage*4,spd:1.8,rng:40,life:480,type:"hellfire",c:"#ff1744",w:24,h:32,cd:0,fr:20,owner:hero.type});
+      for(const en of g.enemies)if(!en.carried)en.sl=Math.max(en.sl,120);
+      for(let i=0;i<15;i++)g.parts.push({x:hero.x+rn(-40,40),y:GY+rn(-30,5),vx:rn(-4,4),vy:rn(-6,-1),life:25,c:"#ff6f00",r:6});}
+    else if(type==="dragon"){
+      // Summon baby dragon + fire AOE
+      g.summons.push({x:(hero.x||CX)+rn(40,100),y:GY-25,hp:120+hero.damage*5,mhp:120+hero.damage*5,
+        dmg:hero.damage*3,spd:2.0,rng:100,life:600,type:"baby_dragon",c:"#d32f2f",w:26,h:20,cd:0,fr:30,owner:hero.type,isFlying:true});
+      for(const en of g.enemies)if(!en.carried)en.hp-=hero.damage*2;
+      g.ft.push({x:(hero.x||CX)+60,y:GY-50,t:"🐉 DRAGE!",life:60,c:"#d32f2f"});}
+    else if(type==="angel"){
+      // Summon guardian spirits + heal all
+      for(let i=0;i<2;i++)g.summons.push({x:(hero.x||CX)+rn(10,60),y:GY+rn(-15,5),hp:50+hero.damage*3,mhp:50+hero.damage*3,
+        dmg:hero.damage*2,spd:1.5,rng:60,life:420,type:"spirit",c:"#fff59d",w:14,h:18,cd:0,fr:22,owner:hero.type,isFlying:true});
+      for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0)h.hp=Math.min(h.maxHp,h.hp+~~(h.maxHp*0.4));
+      for(const m of g.melees)if(m&&m.hp>0)m.hp=Math.min(m.maxHp,m.hp+~~(m.maxHp*0.4));}
+    else if(type==="nature_mage"||type==="druid"){
+      // Summon treant
+      g.summons.push({x:(hero.x||CX)+rn(30,80),y:GY+rn(-5,5),hp:60+hero.damage*3,mhp:60+hero.damage*3,
+        dmg:hero.damage*2,spd:0.8,rng:40,life:480,type:"treant",c:"#33691e",w:20,h:28,cd:0,fr:35,owner:hero.type});
+      for(const en of g.enemies)if(!en.carried&&D(hero.x||CX,hero.y||GY,en.x,en.y)<150)en.sl=Math.max(en.sl,180);}
+    else if(type==="totem_master"){
+      // Place attack totem (stationary, shoots)
+      g.summons.push({x:(hero.x||CX)+rn(40,100),y:GY+rn(-5,5),hp:40+hero.damage*2,mhp:40+hero.damage*2,
+        dmg:hero.damage*2,spd:0,rng:200,life:600,type:"totem",c:"#a1887f",w:10,h:18,cd:0,fr:25,owner:hero.type,stationary:true});}
+    else if(type==="lightning_m"){for(const en of g.enemies)if(!en.carried){en.hp-=hero.damage;g.parts.push({x:en.x,y:en.y-en.h,vx:0,vy:-3,life:12,c:"#ffee58",r:3});}}
+    else if(type==="gatling"){hero.specActive=300;hero.fireRate=Math.max(2,~~(hero.fireRate/3));}
+    else if(type==="tesla"){for(const en of g.enemies)if(!en.carried)en.stn=180;}
+    else if(type==="knight"){hero.hp=Math.min(hero.maxHp,hero.hp+~~(hero.maxHp*0.5));hero.specActive=300;}
+    else if(type==="dwarf"){for(const en of g.enemies)if(!en.carried&&D(hero.x,hero.y,en.x,en.y)<100)en.hp-=hero.damage*3;}
+    else if(type==="berserker"){hero.specActive=300;hero.damage=~~(hero.damage*2);}
+    else if(type==="ninja"){const far=g.enemies.filter(e=>!e.carried).sort((a,b)=>a.x-b.x)[0];if(far){hero.x=far.x+20;far.hp-=hero.damage*5;}}
+    else if(type==="viking"){for(const en of g.enemies)if(!en.carried)en.sl=Math.max(en.sl,200);}
+    else if(type==="samurai"){let tar=null,md=999;for(const en of g.enemies){if(en.carried)continue;const d=D(hero.x,hero.y,en.x,en.y);if(d<md){md=d;tar=en;}}if(tar)tar.hp-=hero.damage*5;}
+    else if(type==="golem_h"){hero.specActive=240;hero.armor=9999;}
+    else if(type==="crossbow_h"){for(const en of g.enemies)if(!en.carried)en.hp-=hero.damage;}
+    else{// Generic spec: damage all nearby enemies
+      for(const en of g.enemies)if(!en.carried&&D(hero.x||CX,hero.y||GY,en.x,en.y)<200)en.hp-=hero.damage*2;
+      for(let i=0;i<8;i++)g.parts.push({x:(hero.x||CX)+rn(-40,40),y:GY+rn(-40,0),vx:rn(-3,3),vy:rn(-4,-1),life:18,c:HEROES[type]?.c||"#fff",r:4});}
+    g.ft.push({x:hero.x||CX+30,y:(hero.y||GY)-50,t:`⚡ ${hd.spec.n}!`,life:60,c:hd.c});sync();},[sync]);
+
+  const slotY=useCallback((fi,si)=>GY-28-fi*FH,[]);
+
+  useEffect(()=>{const h=e=>{if(e.code==="Space"&&ui.phase==="playing"){e.preventDefault();startWave();}};
+    window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[ui.phase,startWave]);
+
+  // ═══ GAME LOOP ═══
+  useEffect(()=>{if(ui.phase!=="playing")return;
+    const canvas=cvs.current,ctx=canvas.getContext("2d");
+    const cls=Array.from({length:6},()=>({x:rn(0,W),y:rn(20,90),w:rn(40,70),s:rn(0.08,0.15)}));
+    const loop=()=>{const g=gR.current;if(!g)return;const spd=spdRef.current;
+      for(let _s=0;_s<spd;_s++){g.tick++;
+        if(g.waveActive&&g.wD){g.wD.timer--;
+          if(g.wD.timer<=0&&g.wD.sp<g.wD.total){g.enemies.push(spawnMon(g.wave,false,g.brain,g.wD));g.wD.sp++;g.wD.timer=g.wD.int;}
+          if(g.wD.boss&&g.wD.bsp<(g.wD.bossCount||1)&&g.wD.sp>=~~(g.wD.total*(0.5+g.wD.bsp*0.15))){g.enemies.push(spawnMon(g.wave,true,g.brain,g.wD));g.wD.bsp++;}
+          if(g.wD.sp>=g.wD.total){g.wD.doneTimer++;if(g.enemies.length===0||g.wD.doneTimer>900){
+            if(g.wD.doneTimer>900)g.enemies=[];g.waveActive=false;g.brain.evolve(g);
+            let bonus=20+g.wave*10;const bank=g.bSlots.find(b=>b&&b.id==="bank");if(bank)bonus+=BLDGS.bank.ef(bank.lvl).gpr;
+            const gm=g.bSlots.find(b=>b&&b.id==="goldmine");if(gm)bonus+=BLDGS.goldmine.ef(gm.lvl).gpr;
+            g.money+=bonus;
+            // DIAMOND REWARD at end of round!
+            let diaReward=1+~~(g.wave/5);// more diamonds at higher waves
+            const dm=g.bSlots.find(b=>b&&b.id==="diamondmine");if(dm)diaReward+=BLDGS.diamondmine.ef(dm.lvl).dpr;
+            g.dia+=diaReward;
+            const hosp=g.bSlots.find(b=>b&&b.id==="hospital");
+            if(hosp){const ef=BLDGS.hospital.ef(hosp.lvl);for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0)h.hp=Math.min(h.hp+~~(h.maxHp*ef.hp),h.maxHp);}
+            // Skill point on boss waves (global class tree)
+            if(g.wave%3===0&&g.classPick){g.classSkillPts=(g.classSkillPts||0)+1;
+              g.ft.push({x:W/2,y:GY-160,t:"🌟 +1 Skill Point!",life:90,c:"#ffd54f"});}
+            g.ft.push({x:W/2,y:GY-140,t:`✅ Bølge ${g.wave}! +${bonus}💰 +${diaReward}💎`,life:100,c:"#ffd54f"});
+            // AUTO-SAVE after each wave
+            const as=uiRef.current?.activeSlot;if(as!=null)saveGame(as);
+            sync();}}}
+        for(const en of g.enemies){monsterTick(en,g);if(en.dot>0&&g.tick%30===0){en.dot=Math.max(0,en.dot-0.5);}}
+        // Castle defense
+        if(g.tick%25===0){const bd=1+g.cAtk*2+~~(g.cLvl*0.5);for(const en of g.enemies)if(en.atCastle&&!en.carried)en.hp-=bd;}
+        // Melee respawn + death animation
+        for(const m of g.melees){if(m&&m.hp<=0){
+          if(!m.deadTimer||m.deadTimer===0){// JUST DIED - show death animation
+            g.ft.push({x:m.x,y:m.y-30,t:`💀 ${HEROES[m.type]?.n||"Helt"} falt!`,life:50,c:"#ef5350"});
+            for(let p=0;p<10;p++)g.parts.push({x:m.x,y:m.y-10,vx:rn(-3,3),vy:rn(-4,-1),life:20,c:HEROES[m.type]?.c||"#fff",r:rn(2,5)});}
+          m.deadTimer=(m.deadTimer||0)+1;if(m.deadTimer>=(m.rsp||600)){m.hp=m.maxHp;m.deadTimer=0;m.x=m.homeX||CX+60;m.y=GY;
+            g.ft.push({x:m.x,y:m.y-30,t:`✨ ${HEROES[m.type]?.n||"Helt"} gjenoppstod!`,life:40,c:"#66bb6a"});
+            for(let p=0;p<6;p++)g.parts.push({x:m.x+rn(-10,10),y:m.y-rn(5,25),vx:rn(-1,1),vy:rn(-3,-1),life:18,c:"#66bb6a",r:3});}}}
+        // Floor hero death + respawn (ranged heroes on castle)
+        for(const fl of g.floors)for(const h of fl){if(!h||!h.maxHp)continue;
+          if(h.hp<=0){
+            if(!h.deadTimer||h.deadTimer===0){// JUST DIED
+              g.ft.push({x:h.x||CX,y:(h.y||GY)-30,t:`💀 ${HEROES[h.type]?.n||"Helt"} falt!`,life:50,c:"#ef5350"});
+              for(let p=0;p<8;p++)g.parts.push({x:h.x||CX,y:(h.y||GY)-15,vx:rn(-2,2),vy:rn(-3,-1),life:18,c:HEROES[h.type]?.c||"#fff",r:rn(2,4)});}
+            h.deadTimer=(h.deadTimer||0)+1;if(h.deadTimer>=(h.rsp||600)){h.hp=h.maxHp;h.deadTimer=0;
+              g.ft.push({x:h.x||CX,y:(h.y||GY)-30,t:`✨ ${HEROES[h.type]?.n||"Helt"} gjenoppstod!`,life:40,c:"#66bb6a"});}}}
+        for(let mi=0;mi<g.melees.length;mi++){const m=g.melees[mi];if(!m||m.hp<=0)continue;m.slot=mi;heroTick(m,g);}
+        // Spec cooldowns + active effects
+        const allHeroes=[...g.melees];for(const fl of g.floors)allHeroes.push(...fl);
+        for(const h of allHeroes){if(!h)continue;if(h.specCd>0)h.specCd--;
+          // AUTO-SPEC: Use special ability automatically when ready + enemies on field
+          if(h.specCd<=0&&h.hp>0&&g.enemies.length>0){
+            const hd2=HEROES[h.type];if(hd2&&hd2.spec){
+              let found=false;
+              for(let fi=0;fi<g.floors.length&&!found;fi++)for(let si=0;si<g.floors[fi].length;si++)if(g.floors[fi][si]===h){useSpec(fi,si,false);found=true;break;}
+              if(!found)for(let mi=0;mi<g.melees.length;mi++)if(g.melees[mi]===h){useSpec(0,mi,true);found=true;break;}
+              if(!found)h.specCd=hd2.spec.cd;// safety fallback
+            }}
+          if(h.specActive>0){h.specActive--;if(h.specActive<=0){
+            if(h.type==="golem_h")h.armor=0;
+            applySkills(h,g);// recalculate all stats
+          }}}
+        // ═══ SUMMON AI ═══
+        for(let si=g.summons.length-1;si>=0;si--){const s=g.summons[si];
+          s.life--;if(s.life<=0||s.hp<=0){
+            g.ft.push({x:s.x,y:s.y-s.h-5,t:"💨",life:20,c:s.c});
+            for(let p=0;p<5;p++)g.parts.push({x:s.x,y:s.y-s.h/2,vx:rn(-3,3),vy:rn(-4,-1),life:15,c:s.c,r:3});
+            g.summons.splice(si,1);continue;}
+          // Find nearest enemy
+          let tar=null,td=9999;
+          for(const en of g.enemies){if(en.carried)continue;const d=D(s.x,s.y,en.x,en.y);if(d<td){td=d;tar=en;}}
+          if(!tar)continue;
+          // Move toward enemy (unless stationary)
+          if(!s.stationary){
+            if(td>s.rng+10){const dx=tar.x-s.x,dy=tar.y-s.y,di=Math.max(1,Math.sqrt(dx*dx+dy*dy));
+              s.x+=(dx/di)*s.spd;if(!s.isFlying)s.y=cl(s.y+(dy/di)*s.spd*0.3,GY-28,GY+12);}
+            if(s.isFlying)s.y=GY-25+Math.sin(s.life*0.06)*10;
+          }
+          // Attack (cooldown)
+          s.cd=Math.max(0,s.cd-1);if(s.cd>0)continue;
+          if(td>s.rng+(tar.w||16))continue;// out of range
+          s.cd=s.fr;
+          const actual=Math.max(1,s.dmg-(tar.arm||0));
+          // Ranged summons shoot projectiles
+          if(s.stationary||s.isFlying||s.rng>60){
+            const a=Math.atan2(tar.y-tar.h/2-s.y,tar.x-s.x);const sp=s.isFlying?7:6;
+            g.proj.push({x:s.x,y:s.y-s.h/2,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,dmg:s.dmg,c:s.c,life:60,r:4,ht:s.owner||"summoner",chain:0});
+            g.parts.push({x:s.x,y:s.y-s.h/2,vx:Math.cos(a)*2,vy:Math.sin(a)*2,life:8,c:s.c,r:2});
+          }else{// Melee summons hit directly
+            if(tar.shield>0){const abs=Math.min(tar.shield,actual);tar.shield-=abs;tar.hp-=actual-abs;}
+            else tar.hp-=actual;
+            g.parts.push({x:tar.x,y:tar.y-tar.h/2,vx:rn(-2,2),vy:-2,life:10,c:s.c,r:3});
+            g.ft.push({x:tar.x,y:tar.y-tar.h-6,t:`-${actual}`,life:18,c:s.c});
+          }
+        }
+        // ═══ CASTLE WEAPON (innebygd) ═══
+        g.castleCd=(g.castleCd||0)-1;
+        if(g.castleCd<=0&&g.enemies.length>0){
+          const castleDmg=3+g.wave*2+g.cLvl*3;const castleRng=180+g.cLvl*20;
+          let ctar=null,cmd=9999;
+          for(const en of g.enemies){if(en.carried)continue;const d=D(CX,GY-40,en.x,en.y);if(d<castleRng&&d<cmd){cmd=d;ctar=en;}}
+          if(ctar){g.castleCd=Math.max(15,40-g.cLvl*3);
+            const a=Math.atan2(ctar.y-ctar.h/2-(GY-40),ctar.x-CX);
+            g.proj.push({x:CX,y:GY-40,vx:Math.cos(a)*8,vy:Math.sin(a)*8,dmg:castleDmg,c:"#ffd54f",life:50,r:4,ht:"castle",chain:0});
+            g.parts.push({x:CX,y:GY-42,vx:Math.cos(a)*3,vy:Math.sin(a)*3-1,life:8,c:"#ffd54f",r:2});}
+        }
+        // Shrine
+        const shr=g.bSlots.find(b=>b&&b.id==="shrine");
+        if(shr&&g.tick%30===0){const r=BLDGS.shrine.ef(shr.lvl).reg;for(const fl of g.floors)for(const h of fl)if(h&&h.hp>0&&h.hp<h.maxHp)h.hp=Math.min(h.hp+~~r,h.maxHp);}
+        // Tower
+        const tw=g.bSlots.find(b=>b&&b.id==="tower_b");
+        if(tw){const ef=BLDGS.tower_b.ef(tw.lvl);g.towerCd=Math.max(0,g.towerCd-1);if(g.towerCd<=0&&g.enemies.length>0){g.towerCd=ef.rate;
+          let tar=null,md=999;for(const en of g.enemies){if(en.carried)continue;const d=D(CX,GY-80,en.x,en.y);if(d<ef.rng&&d<md){md=d;tar=en;}}
+          if(tar){const a=Math.atan2(tar.y-tar.h/2-(GY-80),tar.x-CX);g.proj.push({x:CX,y:GY-80,vx:Math.cos(a)*7,vy:Math.sin(a)*7,dmg:ef.dmg,c:"#ab47bc",ht:"castle",life:80,r:4});}}}
+        // Ranged heroes
+        for(let fi=0;fi<g.floors.length;fi++){for(let si=0;si<3;si++){const hero=g.floors[fi][si];if(!hero)continue;
+          hero.cd=Math.max(0,hero.cd-1);if(hero.cd>0)continue;
+          const hx=CX+30,hy=slotY(fi,si);const hd=HEROES[hero.type];
+          if(hd.healAmt){let lH=null,lP=0.9;for(const m of g.melees){if(m&&m.hp>0&&m.hp<m.maxHp){const p=m.hp/m.maxHp;if(p<lP){lP=p;lH=m;}}}
+            if(lH&&lP<0.9){hero.cd=hero.fireRate;const ha=(hd.healAmt||8)+hero.level*3;lH.hp=Math.min(lH.maxHp,lH.hp+ha);
+              g.ft.push({x:lH.x,y:lH.y-45,t:`+${ha}`,life:18,c:"#e91e63"});}continue;}
+          let tar=null,md=999;for(const en of g.enemies){if(en.carried)continue;const d=D(hx,hy,en.x,en.y-en.h/2);if(d<hero.range&&d<md){md=d;tar=en;}}
+          if(tar){hero.cd=hero.fireRate;let dmg=hero.damage;const forge=g.bSlots.find(b=>b&&b.id==="forge");if(forge)dmg=~~(dmg*BLDGS.forge.ef(forge.lvl).mul);
+            const a=Math.atan2(tar.y-tar.h/2-hy,tar.x-hx);g.proj.push({x:hx+16,y:hy,vx:Math.cos(a)*(hd.ps||6),vy:Math.sin(a)*(hd.ps||6),dmg,c:hd.pc||hd.c,ht:hero.type,life:85,r:hd.spl?6:3,chain:hero.chain||hd.chain,dotH:hero.dotH||hd.dotH,drain:hero.drain||hd.drain});}}}
+        // Projectiles
+        for(let i=g.proj.length-1;i>=0;i--){const p=g.proj[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x>W+30){g.proj.splice(i,1);continue;}
+          if(p.ht==="healer")continue;
+          for(const en of g.enemies){if(en.carried)continue;if(Math.abs(p.x-en.x)<en.w/2+p.r&&Math.abs(p.y-(en.y-en.h/2))<en.h/2+p.r){
+            const hd=HEROES[p.ht];let actual=Math.max(1,p.dmg-(en.arm||0));
+            // Shield absorption (titan boss)
+            if(en.shield>0){const absorbed=Math.min(en.shield,actual);en.shield-=absorbed;actual-=absorbed;
+              g.parts.push({x:en.x,y:en.y-en.h/2,vx:0,vy:-1,life:10,c:"#42a5f5",r:4});}
+            if(hd&&hd.spl){for(const e2 of g.enemies)if(!e2.carried&&D(p.x,p.y,e2.x,e2.y-e2.h/2)<hd.spl)e2.hp-=actual;}
+            else{en.hp-=actual;if(hd&&hd.slow)en.sl=Math.max(en.sl,hd.slow);}
+            if(p.chain){let prev=en,hits=0;for(const e2 of g.enemies){if(e2===en||e2.carried||hits>=p.chain)continue;if(D(prev.x,prev.y,e2.x,e2.y)<120){e2.hp-=~~(actual*0.6);hits++;prev=e2;}}}
+            if(p.dotH)en.dot=(en.dot||0)+p.dotH;if(p.drain)g.hp=Math.min(g.maxHp,g.hp+~~(actual*0.3));
+            g.proj.splice(i,1);for(let pp=0;pp<3;pp++)g.parts.push({x:p.x,y:p.y,vx:rn(-2,2),vy:rn(-2,2),life:10,c:p.c,r:2});break;}}}
+        // Enemy proj
+        for(let i=g.eProj.length-1;i>=0;i--){const p=g.eProj[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x<-30){g.eProj.splice(i,1);continue;}
+          let hit=false;for(const m of g.melees){if(!m||m.hp<=0)continue;if(D(p.x,p.y,m.x,m.y-15)<20){m.hp-=Math.max(1,p.dmg);g.eProj.splice(i,1);hit=true;break;}}
+          // Enemy projectiles also hit castle floor heroes
+          if(!hit){for(const fl of g.floors)for(const h of fl){if(!h||h.hp<=0||!h.maxHp)continue;
+            if(D(p.x,p.y,h.x,h.y-10)<22){h.hp-=Math.max(1,p.dmg);g.eProj.splice(i,1);hit=true;
+              g.ft.push({x:h.x,y:h.y-20,t:`-${Math.max(1,p.dmg)}`,life:18,c:"#ff5252"});break;}if(hit)break;}}
+          if(!hit&&p.x<CX+40){g.hp-=p.dmg;g.eProj.splice(i,1);if(g.hp<=0)g.hp=0;sync();}}
+        // Cleanup
+        for(let i=g.enemies.length-1;i>=0;i--){const en=g.enemies[i];
+          if(en.x>W+200){g.enemies.splice(i,1);continue;}
+          if(en.hp<=0){let rew=en.rew||5;const bank=g.bSlots.find(b=>b&&b.id==="bank");if(bank)rew+=~~BLDGS.bank.ef(bank.lvl).gpk;
+            g.money+=rew;g.score+=rew;g.kills++;g.brain.mem.deaths++;
+            // DarkRitual: dying enemies heal nearby allies
+            if(g.brain.can("darkRitual")){for(const e2 of g.enemies)if(e2!==en&&Math.hypot(e2.x-en.x,e2.y-en.y)<80){
+              e2.hp=Math.min(e2.mhp,e2.hp+~~(en.mhp*0.15));g.parts.push({x:e2.x,y:e2.y-e2.h/2,vx:0,vy:-2,life:15,c:"#b388ff",r:3});}}
+            // ═══ DEATH ANIMATION ═══
+            g.ft.push({x:en.x,y:en.y-en.h-10,t:`+${rew}💰`,life:40,c:"#ffd54f"});
+            g.ft.push({x:en.x,y:en.y-en.h-20,t:"💀",life:30,c:"#fff"});
+            // Big explosion particles
+            const pc=en.boss?20:en.isElite?12:8;
+            for(let p=0;p<pc;p++){const ang=Math.random()*Math.PI*2;const spd=rn(1,en.boss?6:3);
+              g.parts.push({x:en.x,y:en.y-en.h/2,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-1,life:rn(15,30),c:en.boss?"#ffd54f":en.col,r:en.boss?rn(3,7):rn(2,5)});}
+            // Blood/smoke ring
+            for(let p=0;p<6;p++){const ang=p/6*Math.PI*2;
+              g.parts.push({x:en.x+Math.cos(ang)*en.w*0.6,y:en.y-en.h/2+Math.sin(ang)*en.h*0.3,vx:Math.cos(ang)*2,vy:Math.sin(ang)*1.5-1,life:20,c:"rgba(100,60,40,0.5)",r:en.boss?6:3});}
+            // Boss death: extra dramatic
+            if(en.boss){g.ft.push({x:en.x,y:en.y-en.h-35,t:"⭐ BOSS DREPT!",life:60,c:"#ffd54f"});
+              for(let p=0;p<15;p++)g.parts.push({x:en.x+rn(-20,20),y:en.y-en.h/2+rn(-15,15),vx:rn(-5,5),vy:rn(-7,-2),life:35,c:"#ffd54f",r:rn(4,8)});}
+            // Elite death: gold burst
+            if(en.isElite)g.ft.push({x:en.x,y:en.y-en.h-25,t:"⭐ ELITE!",life:40,c:"#ffab00"});
+            // Screen shake on big kills
+            if(en.boss||en.isElite)g.shake=(g.shake||0)+4;
+            g.enemies.splice(i,1);sync();}}
+        if(g.hp<=0){g.hp=0;g.waveActive=false;g.enemies=[];g.eProj=[];g.proj=[];g.summons=[];
+        g.wave=Math.max(0,g.wave-1);g.hp=g.maxHp;
+        for(const fl of g.floors)for(const h of fl)if(h){h.hp=h.maxHp||0;h.cd=0;h.deadTimer=0;h.specCd=0;}
+        for(const m of g.melees)if(m){m.hp=m.maxHp;m.cd=0;m.deadTimer=0;m.specCd=0;}
+        g.ft.push({x:W/2,y:GY-120,t:"💀 Slottet falt! Prøv igjen!",life:120,c:"#ef5350"});
+        g.money+=30;sync();break;}
+        for(let i=g.parts.length-1;i>=0;i--){const p=g.parts[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.vx*=0.95;p.life--;if(p.life<=0)g.parts.splice(i,1);}
+        for(let i=g.ft.length-1;i>=0;i--){g.ft[i].y-=0.8;g.ft[i].life--;if(g.ft[i].life<=0)g.ft.splice(i,1);}
+        if(g.tick%30===0)sync();
+      }
+      if(g.hp<=0){g.hp=g.maxHp;sync();}
+
+      // ═══ RENDER ═══
+      const t=g.tick;
+      const sky=ctx.createLinearGradient(0,0,0,GY);sky.addColorStop(0,"#020510");sky.addColorStop(0.3,"#0a0f2e");sky.addColorStop(1,"#162040");
+      // Screen shake
+      const shk=g.shake||0;if(shk>0){ctx.save();ctx.translate(rn(-shk,shk),rn(-shk,shk));g.shake=Math.max(0,shk-0.3);}
+      ctx.fillStyle=sky;ctx.fillRect(0,0,W,GY);
+      // Stars
+      for(let i=0;i<60;i++){ctx.globalAlpha=0.3+Math.sin(t*0.02+i*2.1)*0.2;ctx.fillStyle=i%7===0?"#ffe082":"#fff";ctx.beginPath();ctx.arc((i*137.5+47)%W,(i*73.3+12)%(GY-80),0.4+(i%4)*0.3,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+      // Moon
+      ctx.fillStyle="rgba(255,255,230,0.5)";ctx.beginPath();ctx.arc(720,50,13,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle="rgba(255,255,220,0.06)";ctx.beginPath();ctx.arc(720,50,30,0,Math.PI*2);ctx.fill();
+      // Mountains
+      ctx.fillStyle="#060b15";ctx.beginPath();ctx.moveTo(0,GY);ctx.lineTo(60,GY-105);ctx.lineTo(160,GY-65);ctx.lineTo(280,GY-120);ctx.lineTo(400,GY-70);ctx.lineTo(520,GY-95);ctx.lineTo(680,GY-55);ctx.lineTo(W,GY-80);ctx.lineTo(W,GY);ctx.fill();
+      // Ground
+      const grd=ctx.createLinearGradient(0,GY,0,H);grd.addColorStop(0,"#1e4a1e");grd.addColorStop(1,"#0a150a");ctx.fillStyle=grd;ctx.fillRect(0,GY,W,H-GY);
+      // Path
+      ctx.fillStyle="rgba(80,60,40,0.25)";ctx.fillRect(CX+40,GY-3,W-CX-40,6);
+      // ═══ MONSTER FORT (right side) ═══
+      const mfx=W-45,mfy=GY;const era=getEra(g.wave);
+      const fortC=era>=4?"#311b92":era>=3?"#37474f":era>=2?"#5d4037":era>=1?"#795548":"#6d4c41";
+      const fortH=28+Math.min(g.wave*0.8,40);// grows with waves
+      // Fort base
+      ctx.fillStyle=fortC;ctx.fillRect(mfx-18,mfy-fortH,36,fortH);
+      ctx.fillStyle=era>=3?"#455a64":"#4e342e";ctx.fillRect(mfx-22,mfy-fortH-4,44,6);// top
+      ctx.fillStyle=era>=3?"#263238":"#3e2723";ctx.fillRect(mfx-14,mfy-fortH+4,28,8);// window
+      ctx.fillStyle=era>=4?"#7c4dff":"#ff6f00";ctx.fillRect(mfx-3,mfy-fortH+5,6,4);// glow
+      // Crenellations
+      for(let ci=0;ci<5;ci++){ctx.fillStyle=fortC;ctx.fillRect(mfx-20+ci*10,mfy-fortH-8,6,5);}
+      // Flag
+      ctx.fillStyle="#d50000";ctx.fillRect(mfx,mfy-fortH-16,1,14);
+      ctx.fillStyle=era>=3?"#d50000":"#bf360c";ctx.beginPath();ctx.moveTo(mfx+1,mfy-fortH-16);ctx.lineTo(mfx+12,mfy-fortH-12);ctx.lineTo(mfx+1,mfy-fortH-8);ctx.fill();
+      // Fort label
+      ctx.fillStyle="#e0e0e0";ctx.font="bold 5px monospace";ctx.textAlign="center";
+      ctx.fillText("🏴 FIENDE-FORT",mfx,mfy+8);
+      // Brain IQ near fort
+      ctx.fillStyle=era>=3?"#ff5252":"#ff8a65";ctx.fillText(`🧠 ${g.brain.intel.toFixed(0)}`,mfx,mfy+15);
+      // Buildings (in front of castle)
+      for(let bi=0;bi<4;bi++){const bx=CX-110+bi*30,by=GY-8,b=g.bSlots[bi];
+        ctx.fillStyle=b?"#3e2723":"#141414";ctx.fillRect(bx-12,by-20,24,22);
+        ctx.fillStyle=b?"#4e342e":"#181818";ctx.beginPath();ctx.moveTo(bx-14,by-18);ctx.lineTo(bx,by-30);ctx.lineTo(bx+14,by-18);ctx.fill();
+        if(b){ctx.fillStyle="rgba(255,200,100,0.3)";ctx.fillRect(bx-4,by-14,3,3);ctx.fillRect(bx+1,by-14,3,3);
+          ctx.fillStyle="#fff";ctx.font="11px monospace";ctx.textAlign="center";ctx.fillText(BLDGS[b.id].icon,bx,by-3);
+          ctx.fillStyle="#ffd54f";ctx.font="bold 6px monospace";ctx.fillText(`${b.lvl}`,bx,by+6);}}
+      // Castle
+      const nf=g.floors.length,cw=64,ctY=GY-24-nf*FH;
+      const cG=ctx.createLinearGradient(CX-cw/2,0,CX+cw/2,0);cG.addColorStop(0,"#2e2518");cG.addColorStop(0.5,"#7a6b55");cG.addColorStop(1,"#2e2518");
+      ctx.fillStyle=cG;ctx.fillRect(CX-cw/2,ctY,cw,GY-ctY);
+      // Castle turret (built-in weapon)
+      ctx.fillStyle="#5d4037";ctx.fillRect(CX-5,ctY-10,10,12);
+      ctx.fillStyle="#ffd54f";ctx.fillRect(CX-2,ctY-8,4,4);// glow
+      if(g.castleCd<=5){ctx.fillStyle="rgba(255,213,79,0.3)";ctx.beginPath();ctx.arc(CX,ctY-5,6,0,Math.PI*2);ctx.fill();}
+      // Door
+      ctx.fillStyle="#2a1a10";ctx.beginPath();ctx.moveTo(CX-8,GY);ctx.lineTo(CX-8,GY-18);ctx.arc(CX,GY-18,8,Math.PI,0);ctx.lineTo(CX+8,GY);ctx.fill();
+      // Floors
+      for(let fi=0;fi<nf;fi++){const fy=slotY(fi,0);ctx.fillStyle="#6d5f4e";ctx.fillRect(CX-cw/2-8,fy-2,cw+22,3);}
+      // Battlements
+      ctx.fillStyle="#5d4e37";for(let b=0;b<7;b++)ctx.fillRect(CX-cw/2+b*10,ctY-10,6,12);
+      // Crystal
+      const crY=ctY-40;const cP=Math.sin(t*0.04)*0.3;
+      ctx.fillStyle="#42a5f5";ctx.beginPath();ctx.moveTo(CX,crY-12);ctx.lineTo(CX+6,crY);ctx.lineTo(CX,crY+8);ctx.lineTo(CX-6,crY);ctx.fill();
+      ctx.fillStyle=`rgba(66,165,245,${0.08+cP*0.03})`;ctx.beginPath();ctx.arc(CX,crY,14,0,Math.PI*2);ctx.fill();
+      // HP bar
+      const hbw=cw+20;ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(CX-hbw/2,GY+12,hbw,8);
+      const hpP=Math.max(0,g.hp/g.maxHp);ctx.fillStyle=hpP>0.5?"#66bb6a":hpP>0.25?"#ffa726":"#ef5350";if(hpP>0)ctx.fillRect(CX-hbw/2+1,GY+13,(hbw-2)*hpP,6);
+      ctx.fillStyle="#fff";ctx.font="bold 6px monospace";ctx.textAlign="center";ctx.fillText(`${g.hp}/${g.maxHp}`,CX,GY+19);
+      // Heroes on castle (sprites!)
+      for(let fi=0;fi<g.floors.length;fi++){for(let si=0;si<3;si++){const h=g.floors[fi][si];if(!h)continue;
+        const spr=buildHeroSprite(h.type);const sx=CX-8+si*16,sy=slotY(fi,si)-10;
+        if(h.hp>0){
+          ctx.drawImage(spr,sx,sy,spr.width*0.45,spr.height*0.45);
+          if(h.hasS){ctx.fillStyle="rgba(255,213,79,0.08)";ctx.beginPath();ctx.arc(sx+10,sy+10,10,0,Math.PI*2);ctx.fill();}
+          // HP bar for floor heroes
+          if(h.maxHp>0){const bw=16;ctx.fillStyle="rgba(0,0,0,0.5)";ctx.fillRect(sx+2,sy-3,bw,2.5);
+            const hp=h.hp/h.maxHp;ctx.fillStyle=hp>0.5?"#66bb6a":hp>0.25?"#ffa726":"#ef5350";ctx.fillRect(sx+2,sy-3,bw*hp,2.5);}
+        }else{// DEAD — show greyed respawn timer
+          ctx.globalAlpha=0.3;ctx.drawImage(spr,sx,sy,spr.width*0.45,spr.height*0.45);ctx.globalAlpha=1;
+          const pct=(h.deadTimer||0)/(h.rsp||600);
+          ctx.strokeStyle="#4fc3f7";ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(sx+8,sy+8,7,-Math.PI/2,-Math.PI/2+Math.PI*2*pct);ctx.stroke();
+          ctx.fillStyle="#ef5350";ctx.font="bold 5px monospace";ctx.textAlign="center";ctx.fillText("💀",sx+8,sy+12);
+        }}}
+      // Melee heroes (sprites!)
+      for(const m of g.melees){if(!m)continue;if(m.hp>0){
+        const spr=buildHeroSprite(m.type);const sc=0.55;ctx.save();ctx.translate(m.x,m.y);ctx.scale(m.facing*sc,sc);
+        ctx.drawImage(spr,-spr.width/2,-spr.height+4,spr.width,spr.height);ctx.restore();
+        const bw=26;ctx.fillStyle="rgba(0,0,0,0.5)";ctx.fillRect(m.x-bw/2,m.y-38,bw,3.5);
+        ctx.fillStyle=m.hp/m.maxHp>0.5?"#66bb6a":"#ef5350";ctx.fillRect(m.x-bw/2,m.y-38,bw*(m.hp/m.maxHp),3.5);
+      }else{const pct=(m.deadTimer||0)/(m.rsp||600);const hx=m.homeX||CX+60;
+        ctx.fillStyle="rgba(30,30,40,0.5)";ctx.beginPath();ctx.arc(hx,GY-10,12,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle="#4fc3f7";ctx.lineWidth=2;ctx.beginPath();ctx.arc(hx,GY-10,12,-Math.PI/2,-Math.PI/2+Math.PI*2*pct);ctx.stroke();
+        ctx.fillStyle="#8b949e";ctx.font="bold 7px monospace";ctx.textAlign="center";ctx.fillText(`${Math.max(0,~~((1-pct)*10))}s`,hx,GY-7);}}
+      // ═══ SUMMONED CREATURES ═══
+      for(const s of g.summons){
+        const pulse=Math.sin(s.life*0.1)*0.15;
+        const bob=Math.sin(s.life*0.08)*1.5;
+        const sx=s.x,sy=s.y+bob;
+        const px=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+        // Shadow
+        ctx.fillStyle="rgba(0,0,0,0.25)";ctx.beginPath();ctx.ellipse(s.x,s.y+2,s.w*0.4,3,0,0,Math.PI*2);ctx.fill();
+        // Glow aura
+        const grd=ctx.createRadialGradient(sx,sy-s.h/2,2,sx,sy-s.h/2,s.w*0.8);
+        grd.addColorStop(0,s.c+"55");grd.addColorStop(1,s.c+"00");
+        ctx.fillStyle=grd;ctx.beginPath();ctx.arc(sx,sy-s.h/2,s.w*0.8,0,Math.PI*2);ctx.fill();
+
+        if(s.type==="demon"||s.type==="hellfire"){
+          const hf=s.type==="hellfire";const bc=hf?"#c62828":"#b71c1c";const hc=hf?"#ff6f00":"#d32f2f";
+          // Legs
+          px(sx-6,sy-6,4,6,"#4e342e");px(sx+2,sy-6,4,6,"#4e342e");
+          // Muscular body
+          px(sx-8,sy-s.h+8,16,s.h-14,bc);
+          px(sx-10,sy-s.h+10,4,8,bc);px(sx+6,sy-s.h+10,4,8,bc);// wide shoulders
+          // Chest detail
+          px(sx-5,sy-s.h+12,10,3,hc);
+          // Head
+          px(sx-5,sy-s.h+2,10,8,"#3e2723");
+          // Horns (curved)
+          px(sx-7,sy-s.h-2,3,5,hf?"#ffa000":"#ef6c00");px(sx-8,sy-s.h-4,2,3,hf?"#ffc107":"#ff8f00");
+          px(sx+4,sy-s.h-2,3,5,hf?"#ffa000":"#ef6c00");px(sx+5,sy-s.h-4,2,3,hf?"#ffc107":"#ff8f00");
+          // Glowing eyes
+          ctx.fillStyle="#ffeb3b";ctx.fillRect(sx-3,sy-s.h+4,2,2);ctx.fillRect(sx+2,sy-s.h+4,2,2);
+          ctx.fillStyle="#fff";ctx.fillRect(sx-2,sy-s.h+4,1,1);ctx.fillRect(sx+3,sy-s.h+4,1,1);
+          // Mouth (snarl)
+          px(sx-2,sy-s.h+7,5,1,"#ff6f00");
+          // Claws
+          px(sx-12,sy-s.h+18,3,2,"#ffab00");px(sx+9,sy-s.h+18,3,2,"#ffab00");
+          // Fire aura
+          if(s.life%5===0){for(let i=0;i<2;i++)g.parts.push({x:sx+rn(-8,8),y:sy-s.h+rn(-5,5),vx:rn(-1,1),vy:rn(-3,-1),life:14,c:hf?"#ff6f00":"#d50000",r:rn(2,4)});}
+          // Wing stubs
+          ctx.fillStyle=bc+"99";ctx.beginPath();ctx.moveTo(sx-10,sy-s.h+10);ctx.lineTo(sx-16,sy-s.h+4);ctx.lineTo(sx-8,sy-s.h+14);ctx.fill();
+          ctx.beginPath();ctx.moveTo(sx+10,sy-s.h+10);ctx.lineTo(sx+16,sy-s.h+4);ctx.lineTo(sx+8,sy-s.h+14);ctx.fill();
+
+        }else if(s.type==="zombie"){
+          // Tattered legs
+          px(sx-4,sy-5,3,5,"#4a148c");px(sx+1,sy-5,3,5,"#4a148c");
+          // Ragged body
+          px(sx-5,sy-s.h+5,10,s.h-10,"#6a1b9a");
+          // Torn sleeve arms
+          px(sx-7,sy-s.h+7,3,8,"#7b1fa2");px(sx+5,sy-s.h+7,3,8,"#7b1fa2");
+          // Outstretched hands
+          px(sx-8,sy-s.h+14,2,3,"#9575cd");px(sx+7,sy-s.h+14,2,3,"#9575cd");
+          // Head
+          px(sx-4,sy-s.h+1,8,6,"#9575cd");
+          // Messy hair
+          px(sx-4,sy-s.h-1,2,3,"#4a148c");px(sx+0,sy-s.h-1,2,2,"#4a148c");px(sx+3,sy-s.h,1,2,"#4a148c");
+          // Hollow eyes
+          ctx.fillStyle="#e040fb";ctx.fillRect(sx-2,sy-s.h+3,2,2);ctx.fillRect(sx+1,sy-s.h+3,2,2);
+          // Mouth
+          px(sx-1,sy-s.h+6,3,1,"#311b92");
+          // Decay particles
+          if(s.life%20===0)g.parts.push({x:sx+rn(-5,5),y:sy-s.h/2,vx:rn(-0.5,0.5),vy:-0.5,life:15,c:"#b39ddb",r:1});
+
+        }else if(s.type==="imp"){
+          // Small body
+          ctx.fillStyle="#6a1b9a";ctx.beginPath();ctx.ellipse(sx,sy-s.h*0.4,5,6,0,0,Math.PI*2);ctx.fill();
+          // Head
+          ctx.fillStyle="#7b1fa2";ctx.beginPath();ctx.arc(sx,sy-s.h+3,4,0,Math.PI*2);ctx.fill();
+          // Horns (tiny)
+          px(sx-4,sy-s.h-1,2,3,"#e040fb");px(sx+2,sy-s.h-1,2,3,"#e040fb");
+          // Eyes (bright)
+          ctx.fillStyle="#f50057";ctx.fillRect(sx-2,sy-s.h+2,2,2);ctx.fillRect(sx+1,sy-s.h+2,2,2);
+          ctx.fillStyle="#fff";ctx.fillRect(sx-1,sy-s.h+2,1,1);ctx.fillRect(sx+2,sy-s.h+2,1,1);
+          // Grin
+          px(sx-1,sy-s.h+5,3,1,"#d500f9");
+          // Wings (detailed bat-like)
+          ctx.fillStyle="rgba(156,39,176,0.5)";
+          ctx.beginPath();ctx.moveTo(sx-5,sy-s.h+1);ctx.lineTo(sx-12,sy-s.h-4);ctx.lineTo(sx-10,sy-s.h+2);ctx.lineTo(sx-8,sy-s.h-2);ctx.lineTo(sx-5,sy-s.h+3);ctx.fill();
+          ctx.beginPath();ctx.moveTo(sx+5,sy-s.h+1);ctx.lineTo(sx+12,sy-s.h-4);ctx.lineTo(sx+10,sy-s.h+2);ctx.lineTo(sx+8,sy-s.h-2);ctx.lineTo(sx+5,sy-s.h+3);ctx.fill();
+          // Tail
+          ctx.strokeStyle="#7b1fa2";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(sx,sy-2);ctx.quadraticCurveTo(sx+6,sy-4,sx+4,sy-8);ctx.stroke();
+          // Little legs
+          px(sx-3,sy-3,2,3,"#6a1b9a");px(sx+1,sy-3,2,3,"#6a1b9a");
+
+        }else if(s.type==="baby_dragon"){
+          // Body (oval)
+          ctx.fillStyle="#c62828";ctx.beginPath();ctx.ellipse(sx,sy-s.h/2,s.w*0.4,s.h*0.28,0,0,Math.PI*2);ctx.fill();
+          // Belly
+          ctx.fillStyle="#ef5350";ctx.beginPath();ctx.ellipse(sx,sy-s.h*0.35,s.w*0.2,s.h*0.15,0,0,Math.PI*2);ctx.fill();
+          // Head
+          ctx.fillStyle="#d32f2f";ctx.beginPath();ctx.arc(sx+6,sy-s.h*0.6,5,0,Math.PI*2);ctx.fill();
+          // Snout
+          px(sx+9,sy-s.h*0.62,3,2,"#e53935");px(sx+11,sy-s.h*0.6,1,1,"#212121");// nostril
+          // Eyes
+          ctx.fillStyle="#ffeb3b";ctx.fillRect(sx+4,sy-s.h*0.65,2,3);
+          ctx.fillStyle="#212121";ctx.fillRect(sx+5,sy-s.h*0.63,1,2);
+          // Horns
+          px(sx+4,sy-s.h*0.7-3,1,3,"#ff8f00");px(sx+7,sy-s.h*0.7-3,1,3,"#ff8f00");
+          // Wings (larger, detailed)
+          ctx.fillStyle="rgba(211,47,47,0.6)";
+          ctx.beginPath();ctx.moveTo(sx-2,sy-s.h*0.55);ctx.lineTo(sx-14,sy-s.h*0.9);ctx.lineTo(sx-10,sy-s.h*0.5);ctx.lineTo(sx-8,sy-s.h*0.8);ctx.lineTo(sx-3,sy-s.h*0.45);ctx.fill();
+          ctx.beginPath();ctx.moveTo(sx+2,sy-s.h*0.55);ctx.lineTo(sx+14,sy-s.h*0.9);ctx.lineTo(sx+10,sy-s.h*0.5);ctx.lineTo(sx+8,sy-s.h*0.8);ctx.lineTo(sx+3,sy-s.h*0.45);ctx.fill();
+          // Tail
+          ctx.strokeStyle="#b71c1c";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(sx-8,sy-s.h*0.4);ctx.quadraticCurveTo(sx-14,sy-s.h*0.3,sx-12,sy-s.h*0.5);ctx.stroke();
+          // Tail tip (arrow)
+          ctx.fillStyle="#d50000";ctx.beginPath();ctx.moveTo(sx-12,sy-s.h*0.5);ctx.lineTo(sx-15,sy-s.h*0.45);ctx.lineTo(sx-14,sy-s.h*0.55);ctx.fill();
+          // Legs (small, tucked)
+          px(sx-4,sy-s.h*0.2,2,3,"#b71c1c");px(sx+2,sy-s.h*0.2,2,3,"#b71c1c");
+          // Fire breath particles
+          if(s.life%6===0)g.parts.push({x:sx+11,y:sy-s.h*0.58,vx:rn(1,3),vy:rn(-1,1),life:10,c:rn(0,1)>0.5?"#ff6f00":"#ffd54f",r:rn(1,3)});
+
+        }else if(s.type==="spirit"){
+          ctx.globalAlpha=0.35+pulse*2+Math.sin(s.life*0.05)*0.15;
+          // Ethereal body (teardrop)
+          const sg=ctx.createRadialGradient(sx,sy-s.h*0.4,1,sx,sy-s.h*0.4,s.w*0.5);
+          sg.addColorStop(0,"#fff9c4");sg.addColorStop(0.5,"#fff59d");sg.addColorStop(1,"#fff59d00");
+          ctx.fillStyle=sg;ctx.beginPath();ctx.moveTo(sx,sy-s.h);ctx.quadraticCurveTo(sx-8,sy-s.h*0.4,sx-4,sy);ctx.quadraticCurveTo(sx,sy+3,sx+4,sy);ctx.quadraticCurveTo(sx+8,sy-s.h*0.4,sx,sy-s.h);ctx.fill();
+          // Face
+          ctx.fillStyle="rgba(255,255,255,0.9)";ctx.fillRect(sx-3,sy-s.h*0.55,2,2);ctx.fillRect(sx+1,sy-s.h*0.55,2,2);
+          // Peaceful mouth
+          ctx.strokeStyle="rgba(255,255,255,0.6)";ctx.lineWidth=0.5;ctx.beginPath();ctx.arc(sx,sy-s.h*0.4,2,0.2,Math.PI-0.2);ctx.stroke();
+          // Trailing wisps
+          ctx.strokeStyle="rgba(255,249,196,0.3)";ctx.lineWidth=1;
+          ctx.beginPath();ctx.moveTo(sx-3,sy);ctx.quadraticCurveTo(sx-6,sy+6,sx-2,sy+10);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(sx+3,sy);ctx.quadraticCurveTo(sx+6,sy+6,sx+2,sy+10);ctx.stroke();
+          // Sparkle
+          if(s.life%12===0)g.parts.push({x:sx+rn(-6,6),y:sy-rn(2,s.h),vx:rn(-0.5,0.5),vy:-1,life:18,c:"#fff9c4",r:1});
+          ctx.globalAlpha=1;
+
+        }else if(s.type==="treant"){
+          // Thick trunk
+          px(sx-4,sy-s.h*0.5,8,s.h*0.5,"#4e342e");
+          // Bark texture
+          px(sx-3,sy-s.h*0.4,2,3,"#3e2723");px(sx+1,sy-s.h*0.3,2,4,"#3e2723");
+          // Roots/feet
+          px(sx-6,sy-3,4,3,"#5d4037");px(sx+3,sy-3,4,3,"#5d4037");
+          // Branch arms
+          px(sx-8,sy-s.h*0.6,5,3,"#5d4037");px(sx+4,sy-s.h*0.6,5,3,"#5d4037");
+          px(sx-10,sy-s.h*0.65,3,2,"#4e342e");px(sx+8,sy-s.h*0.65,3,2,"#4e342e");
+          // Leaf clusters (layered canopy)
+          const lc=["#2e7d32","#388e3c","#43a047","#33691e"];
+          for(let i=0;i<4;i++){const lx=sx+rn(-7,7),ly=sy-s.h*0.65-rn(0,8),lr=rn(4,7);
+            ctx.fillStyle=lc[i];ctx.beginPath();ctx.arc(lx,ly,lr,0,Math.PI*2);ctx.fill();}
+          // Face in trunk
+          px(sx-2,sy-s.h*0.42,2,1,"#1b5e20");px(sx+1,sy-s.h*0.42,2,1,"#1b5e20");// eyes
+          px(sx-1,sy-s.h*0.38,3,1,"#3e2723");// mouth
+          // Falling leaves
+          if(s.life%25===0)g.parts.push({x:sx+rn(-8,8),y:sy-s.h*0.7,vx:rn(-1,1),vy:rn(0.5,1.5),life:30,c:"#66bb6a",r:1.5});
+
+        }else if(s.type==="totem"){
+          // Totem pole base
+          px(sx-4,sy-2,8,2,"#3e2723");// ground base
+          px(sx-3,sy-s.h,6,s.h-2,"#6d4c41");
+          // Carved sections
+          px(sx-4,sy-s.h,8,4,"#8d6e63");// top cap
+          px(sx-4,sy-s.h*0.6,8,3,"#8d6e63");// mid ring
+          px(sx-4,sy-s.h*0.3,8,3,"#8d6e63");// lower ring
+          // Carved face (top)
+          const ec=s.life%30<15?"#ff6f00":"#ffd54f";
+          ctx.fillStyle=ec;ctx.fillRect(sx-2,sy-s.h+5,2,2);ctx.fillRect(sx+1,sy-s.h+5,2,2);// eyes
+          px(sx-1,sy-s.h+8,3,1,"#3e2723");// mouth
+          // Carved face (mid)
+          ctx.fillStyle=ec;ctx.fillRect(sx-1,sy-s.h*0.55,1,1);ctx.fillRect(sx+1,sy-s.h*0.55,1,1);
+          // Wing decorations
+          px(sx-6,sy-s.h*0.7,3,2,"#5d4037");px(sx+4,sy-s.h*0.7,3,2,"#5d4037");
+          // Pulsing magic ring
+          ctx.strokeStyle=`rgba(255,111,0,${0.3+pulse})`;ctx.lineWidth=1;ctx.beginPath();ctx.arc(sx,sy-s.h/2,12+Math.sin(s.life*0.05)*3,0,Math.PI*2);ctx.stroke();
+          ctx.strokeStyle=`rgba(255,213,79,${0.15+pulse*0.5})`;ctx.beginPath();ctx.arc(sx,sy-s.h/2,18+Math.sin(s.life*0.03)*4,0,Math.PI*2);ctx.stroke();
+          // Energy sparks
+          if(s.life%15===0){const a=Math.random()*Math.PI*2;
+            g.parts.push({x:sx+Math.cos(a)*14,y:sy-s.h/2+Math.sin(a)*14,vx:Math.cos(a)*0.5,vy:Math.sin(a)*0.5,life:12,c:ec,r:1.5});}
+
+        }else{
+          ctx.fillStyle=s.c;ctx.fillRect(sx-s.w/3,sy-s.h,s.w*0.65,s.h);
+        }
+        // HP bar (cleaner)
+        const shp=s.hp/s.mhp;const bw=s.w+6;
+        ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(sx-bw/2,sy-s.h-7,bw,3);
+        ctx.fillStyle=shp>0.5?"#b388ff":shp>0.25?"#ff80ab":"#ef5350";ctx.fillRect(sx-bw/2,sy-s.h-7,bw*shp,3);
+        ctx.fillStyle="rgba(255,255,255,0.15)";ctx.fillRect(sx-bw/2,sy-s.h-7,bw*shp,1);// shine
+        // Life timer ring
+        const lp=s.life/(s.type==="totem"?600:s.type==="baby_dragon"?600:480);
+        ctx.strokeStyle=`${s.c}${~~(lp*180).toString(16).padStart(2,'0')}`;ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.arc(sx,sy-s.h-10,3,-Math.PI/2,-Math.PI/2+Math.PI*2*lp);ctx.stroke();
+      }
+      // Enemies (sprites!)
+      for(const en of g.enemies){if(en.carried)continue;
+        const spr=buildMonSprite(en.raceId,en.era,en.boss);const sc=en.boss?0.65:0.5;
+        const dy=en.isFlying?-30:0;const bn=Math.sin(en.f*0.08)*2;
+        if(en.sl>0)ctx.globalAlpha=0.7;
+        ctx.drawImage(spr,en.x-spr.width*sc/2,en.y-spr.height*sc+bn+dy,spr.width*sc,spr.height*sc);
+        ctx.globalAlpha=1;
+        // HP bar
+        const bw=en.w+8,bY=en.y-en.h-8+dy;
+        ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(en.x-bw/2,bY,bw,en.boss?5:3);
+        const pct=en.hp/en.mhp;ctx.fillStyle=pct>0.5?"#66bb6a":pct>0.25?"#ffa726":"#ef5350";ctx.fillRect(en.x-bw/2,bY,bw*pct,en.boss?5:3);
+        if(en.boss){ctx.fillStyle="#ffd54f";ctx.font="bold 8px monospace";ctx.textAlign="center";ctx.strokeStyle="rgba(0,0,0,0.5)";ctx.lineWidth=2;ctx.strokeText("BOSS",en.x,bY-3);ctx.fillText("BOSS",en.x,bY-3);}
+        if(en.atCastle){ctx.fillStyle=`rgba(255,0,0,${0.15+Math.sin(en.f*0.1)*0.08})`;ctx.beginPath();ctx.arc(en.x,en.y-en.h*0.5+dy,en.w*0.5,0,Math.PI*2);ctx.fill();}
+        // Elite glow
+        if(en.isElite){ctx.fillStyle=`rgba(255,215,0,${0.12+Math.sin(en.f*0.08)*0.06})`;ctx.beginPath();ctx.arc(en.x,en.y-en.h*0.5+dy,en.w*0.7,0,Math.PI*2);ctx.fill();
+          ctx.fillStyle="#ffd54f";ctx.font="bold 6px monospace";ctx.textAlign="center";ctx.fillText("⭐",en.x,en.y-en.h-2+dy);}
+        // Shield bar (under HP bar)
+        if(en.shield>0&&en.maxShield>0){const sw=en.boss?35:18;
+          ctx.fillStyle="rgba(66,165,245,0.4)";ctx.fillRect(en.x-sw/2,en.y-en.h-2+dy,sw,2);
+          ctx.fillStyle="#42a5f5";ctx.fillRect(en.x-sw/2,en.y-en.h-2+dy,sw*(en.shield/en.maxShield),2);}
+        }
+      // Projectiles
+      for(const p of g.proj){ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+      for(const p of g.eProj){ctx.fillStyle=p.c;ctx.shadowColor=p.c;ctx.shadowBlur=4;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+      for(const p of g.parts){ctx.globalAlpha=Math.max(0,p.life/24);ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.r*(p.life/24),0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+      for(const ft of g.ft){ctx.globalAlpha=Math.min(1,ft.life/20);ctx.fillStyle=ft.c;ctx.font=ft.t.includes("✅")||ft.t.includes("🧠")?"bold 12px monospace":"bold 9px monospace";ctx.textAlign="center";ctx.strokeStyle="rgba(0,0,0,0.6)";ctx.lineWidth=2;ctx.strokeText(ft.t,ft.x,ft.y);ctx.fillText(ft.t,ft.x,ft.y);}ctx.globalAlpha=1;
+      // Era timeline
+      const curEra=getEra(g.wave);ctx.fillStyle="rgba(5,8,15,0.6)";ctx.fillRect(4,GY+3,145,H-GY-5);
+      ctx.fillStyle="#aaa";ctx.font="bold 6px monospace";ctx.textAlign="left";ctx.fillText("TEKNOLOGI:",8,GY+12);
+      for(let ei=0;ei<ERAS.length;ei++){const e=ERAS[ei],ey=GY+18+ei*16,ac=ei===curEra;
+        ctx.fillStyle=ac?e.col:ei<=curEra?"#6e7681":"#30363d";ctx.font=ac?"bold 7px monospace":"6px monospace";
+        ctx.fillText(`${e.icon} ${e.name}`,8,ey+4);ctx.textAlign="right";ctx.fillText(`${e.waves[0]}-${e.waves[1]===999?"∞":e.waves[1]}`,145,ey+4);ctx.textAlign="left";}
+      // AI panel
+      ctx.fillStyle="rgba(5,8,15,0.6)";ctx.fillRect(W-130,GY+3,126,H-GY-5);
+      // Difficulty + Brain display
+      const diffTier=g.wave<=2?"Lett":g.wave<=5?"Normal":g.wave<=10?"⚠ Vanskelig":g.wave<=20?"💀 Brutalt":g.wave<=30?"☠ Helvete":"🔥 UMULIG";
+      const diffCol=g.wave<=2?"#81c784":g.wave<=5?"#66bb6a":g.wave<=10?"#ffa726":g.wave<=20?"#ff5722":g.wave<=30?"#d50000":"#ff1744";
+      ctx.fillStyle=diffCol;ctx.font="bold 8px monospace";ctx.textAlign="right";ctx.fillText(diffTier,W-6,GY+12);
+      ctx.fillStyle="#e0e0e0";ctx.font="bold 7px monospace";ctx.fillText(`🧠 IQ:${g.brain.intel.toFixed(0)} Gen:${g.brain.gen}`,W-6,GY+22);
+      let bdy=GY+22;ctx.fillStyle="#81c784";ctx.font="6px monospace";
+      const abilNames={flank:"Flanke",shareAmmo:"Del ammo",rescue:"Redning",swapWeapon:"Bytt våpen",focusFire:"Fokusild",retreat:"Retrett",shieldWall:"Skjoldmur",surround:"Omring",healAllies:"Heal",rushTactics:"Rush",deathSquad:"Elitelag",siegeMode:"Beleiring",berserkerRage:"Raseri",darkRitual:"Mørkt ritual",swarmIntel:"Svermhirn",titanShield:"Titanskjold",poisonCloud:"Giftsky"};
+      const comboCols={rushTactics:"#ff6d00",deathSquad:"#d50000",siegeMode:"#ff3d00",berserkerRage:"#ff1744",darkRitual:"#aa00ff",swarmIntel:"#00e5ff",titanShield:"#42a5f5",poisonCloud:"#76ff03"};
+      for(const[k,v]of Object.entries(g.brain.abilities)){if(v>0){ctx.fillStyle=comboCols[k]||"#aaa";ctx.fillText(`✓ ${abilNames[k]||k} ${v>=5?"★★★":v>=2?"★★":"★"}`,W-6,bdy);bdy+=9;if(bdy>H-4)break;}}
+      // Wave HUD
+      if(g.waveActive){ctx.fillStyle="rgba(0,0,0,0.5)";ctx.fillRect(W/2-90,5,180,22);ctx.fillStyle="#ef5350";ctx.font="bold 10px monospace";ctx.textAlign="center";ctx.fillText(`⚔ Bølge ${g.wave} — ${g.enemies.length} 👾`,W/2,20);}
+      // Era/timeline label top right
+      const eraNames=["🦴 Primitiv","🪨 Steinalder","🔫 Krutt & Kuler","💣 Militær Makt","⚡ Sci-fi"];
+      const eraCols=["#a1887f","#8d6e63","#ff8a65","#78909c","#7c4dff"];
+      const ce=getEra(g.wave);
+      ctx.fillStyle="rgba(0,0,0,0.6)";ctx.fillRect(W-120,4,116,20);
+      ctx.fillStyle=eraCols[ce]||"#fff";ctx.font="bold 9px monospace";ctx.textAlign="right";
+      ctx.fillText(eraNames[ce]||"???",W-8,17);
+      if(g.shake>0)ctx.restore();// end screen shake
+      aR.current=requestAnimationFrame(loop);
+    };aR.current=requestAnimationFrame(loop);return()=>cancelAnimationFrame(aR.current);
+  },[ui.phase,sync,slotY]);
+
+  // ═══ UI ═══
+  const FN="'Fira Code',monospace";const S={bg:"linear-gradient(135deg,#0d1117,#161b22)",bd:"1px solid #30363d",br:8};
+  const Btn=({onClick,disabled,children,bg,...p})=>(<button onClick={onClick} disabled={disabled} style={{width:"100%",padding:4,border:"none",borderRadius:5,background:disabled?"#21262d":bg||"#2ea043",color:"#fff",fontWeight:700,cursor:disabled?"default":"pointer",fontFamily:FN,fontSize:15,opacity:disabled?0.3:1,...p.style}}>{children}</button>);
+
+  if(ui.phase==="menu")return(
+    <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 30% 40%,#1a1030,#010409)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:FN,color:"#e6edf3",padding:20}}>
+      <h1 style={{fontSize:52,fontWeight:900,letterSpacing:8,background:"linear-gradient(135deg,#ffd54f,#ff8a65,#ef5350,#ab47bc)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",margin:"4px 0"}}>BIFFAUER X</h1>
+      <p style={{color:"#8b949e",margin:"12px 0 20px",fontSize:14,textAlign:"center"}}>Velg en verden — maks 4 verdener</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,maxWidth:560,width:"100%"}}>
+        {[0,1,2,3].map(slot=>{const s=ui.saves?.[slot];
+          const icons=["🏰","⚔","🐉","💎"];
+          const cols=["#238636","#1565c0","#9c27b0","#e65100"];
+          return(<div key={slot} style={{background:"rgba(255,255,255,0.04)",border:"1px solid #30363d",borderRadius:14,padding:16,minHeight:140,display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:20,fontWeight:900,color:cols[slot]}}>{icons[slot]} Verden {slot+1}</div>
+            {s?(<>
+              <div style={{fontSize:14,color:"#e6edf3"}}>🌊 Bølge <b>{s.wave}</b> · 💰 {s.money} · ⭐ {s.score}</div>
+              <div style={{fontSize:12,color:"#8b949e"}}>👥 {s.heroes} helter {s.classPick?`· ${CLASSES[s.classPick]?.n||s.classPick}`:""}</div>
+              <div style={{fontSize:11,color:"#6e7681"}}>💾 {new Date(s.date).toLocaleDateString("no-NO",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+              <div style={{display:"flex",gap:6,marginTop:"auto"}}>
+                <button onClick={()=>loadGame(slot)} style={{flex:1,padding:"8px 0",border:"none",borderRadius:8,background:`linear-gradient(135deg,${cols[slot]},${cols[slot]}cc)`,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:FN}}>▶ FORTSETT</button>
+                <button onClick={()=>{if(confirm("Slette denne verdenen?"))deleteSave(slot);}} style={{padding:"8px 12px",border:"1px solid #ef5350",borderRadius:8,background:"transparent",color:"#ef5350",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:FN}}>🗑</button>
+              </div>
+            </>):(<>
+              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#30363d",fontSize:40}}>+</div>
+              <button onClick={()=>startNew(slot)} style={{padding:"10px 0",border:"none",borderRadius:8,background:`linear-gradient(135deg,${cols[slot]},${cols[slot]}cc)`,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:FN}}>🆕 NY VERDEN</button>
+            </>)}
+          </div>);
+        })}
+      </div>
+      <p style={{color:"#6e7681",margin:"16px 0 0",fontSize:12,textAlign:"center"}}>
+        🦴 Primitiv → 🪨 Steinalder → 🔫 Krutt → 💣 Militær → ⚡ Sci-fi · Autolagring etter hver bølge
+      </p>
+    </div>);
+
+  if(ui.phase==="gameover")return null;
+
+  const g=gR.current;
+  const rH=Object.entries(HEROES).filter(([,h])=>h.t==="r");const mH=Object.entries(HEROES).filter(([,h])=>h.t==="m");
+  const shopTarget=ui.shop;// {fi,si,isM} or null
+
+  return(
+    <div style={{minHeight:"100vh",background:"#010409",display:"flex",fontFamily:FN,color:"#e6edf3",padding:5,gap:3}}>
+      {/* LEFT: controls */}
+      <div style={{display:"flex",flexDirection:"column",gap:2,width:160,flexShrink:0}}>
+        <div style={{background:S.bg,border:S.bd,borderRadius:S.br,padding:4,display:"flex",flexDirection:"column",gap:2}}>
+          <div style={{fontSize:16,textAlign:"center"}}>💰<b style={{color:"#ffa726"}}>{ui.money}</b> ❤️<b style={{color:"#ef5350"}}>{ui.hp}</b> 💎<b style={{color:"#b388ff"}}>{ui.dia}</b></div>
+          <div style={{fontSize:15,textAlign:"center"}}>🌊<b style={{color:"#4fc3f7"}}>{ui.wave}</b> 💀<b>{ui.kills}</b> 🧠<b style={{color:ui.intel>40?"#ffa726":"#66bb6a"}}>{~~ui.intel}</b></div>
+        </div>
+        <Btn onClick={startWave} disabled={ui.wA} bg={ui.wA?"#21262d":"#c62828"} style={{fontSize:13}}>{ui.wA?"⚔ PÅGÅR...":`⚔ BØLGE ${ui.wave+1}`}</Btn>
+        {ui.classPick&&<Btn onClick={()=>setUi(u=>({...u,showTree:!u.showTree,shop:null}))} bg={`${CLASSES[ui.classPick].c}30`} style={{fontSize:16,border:`1px solid ${CLASSES[ui.classPick].c}`,color:CLASSES[ui.classPick].c}}>🌳 {CLASSES[ui.classPick].n.split(" ")[1]} ({(ui.classSkills||[]).length}/48) {ui.classSkillPts>0?`🌟${ui.classSkillPts}`:""}</Btn>}
+        <Btn onClick={retryWave} disabled={ui.wA||ui.wave<1} bg="#e65100">↩ Tilbake</Btn>
+        <Btn onClick={()=>{if(ui.activeSlot!=null)saveGame(ui.activeSlot);}} disabled={ui.wA} bg="#2e7d32">💾 Lagre</Btn>
+        <Btn onClick={()=>{if(ui.activeSlot!=null)saveGame(ui.activeSlot);setUi(u=>({...u,phase:"menu",savesLoaded:false}));}} disabled={ui.wA} bg="#424242">🏠 Meny</Btn>
+        <Btn onClick={upgC} disabled={!g||ui.money<g?.cUC} bg="#1565c0">🏰 {g?.floors?.length<4?"+Etasje":"+HP"} ({g?.cUC})</Btn>
+        <Btn onClick={upgA} disabled={!g||ui.money<g?.cAU} bg="#4527a0">⚔ Angrep ({g?.cAU})</Btn>
+        <Btn onClick={addM} disabled={!g||ui.money<g?.mUC} bg="#795548">🛡 +Kriger ({g?.mUC})</Btn>
+        <div style={{fontSize:16,color:"#6e7681",fontWeight:700,marginTop:4}}>🏘️ BYGNINGER</div>
+        <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>{ui.bldgs.map((b,i)=>(<button key={`b${i}`} onClick={()=>setUi(u=>({...u,selB:u.selB===i?null:i,shop:null}))} style={{width:26,height:26,border:ui.selB===i?"2px solid #ab47bc":S.bd,borderRadius:4,background:b?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.01)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#e6edf3",fontFamily:FN,fontSize:b?10:8}}>{b?BLDGS[b.id].icon:"+"}</button>))}</div>
+        {ui.selB!=null&&!ui.bldgs[ui.selB]&&<div style={{display:"flex",flexDirection:"column",gap:1}}>{Object.entries(BLDGS).map(([k,b])=>(<button key={k} onClick={()=>{placeBldg(ui.selB,k);setUi(u=>({...u,selB:null}));}} disabled={ui.money<b.bc} style={{display:"flex",alignItems:"center",gap:2,padding:2,border:S.bd,borderRadius:3,cursor:ui.money>=b.bc?"pointer":"default",color:ui.money>=b.bc?"#e6edf3":"#30363d",fontFamily:FN,fontSize:16,background:"transparent"}}><span style={{fontSize:13}}>{b.icon}</span><span style={{flex:1}}>{b.n}</span><span style={{color:"#ffa726"}}>{b.bc}</span></button>))}</div>}
+        {ui.selB!=null&&ui.bldgs[ui.selB]&&(()=>{const b=ui.bldgs[ui.selB],def=BLDGS[b.id],cost=~~(def.bc*(1+b.lvl*0.5));return(<div style={{fontSize:13}}><div style={{fontWeight:700}}>{def.icon} {def.n} Lv{b.lvl}</div><div style={{color:"#8b949e",fontSize:12}}>{def.ud(b.lvl)}</div>{b.lvl<def.mx&&<Btn onClick={()=>upgBldg(ui.selB)} disabled={ui.money<cost}>⬆ Lv{b.lvl+1} ({cost})</Btn>}</div>);})()}
+        {/* Castle slot grid + melee slots */}
+        <div style={{fontSize:15,color:"#6e7681",fontWeight:700,marginTop:4}}>🏰 ETASJER ({ui.floors.length}/4)</div>
+        {ui.floors.map((fl,fi)=>(<div key={`fl${fi}`} style={{display:"flex",gap:2}}>{fl.map((s,si)=>(<button key={`s${fi}${si}`} onClick={()=>setUi(u=>({...u,shop:u.shop?.fi===fi&&u.shop?.si===si?null:{fi,si,isM:false},selB:null}))} style={{width:36,height:34,border:shopTarget?.fi===fi&&shopTarget?.si===si&&!shopTarget?.isM?"2px solid #4fc3f7":S.bd,borderRadius:4,background:s?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.01)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#e6edf3",fontFamily:FN,fontSize:11}}>{s?(<><div style={{width:5,height:5,borderRadius:"50%",background:HEROES[s.type].c}}/><div style={{fontWeight:700}}>{HEROES[s.type].n.slice(0,3)}</div>{s.hasS&&<div style={{color:"#ffd54f",fontSize:12}}>⭐</div>}</>):"+"}</button>))}</div>))}
+        <div style={{fontSize:15,color:"#6e7681",fontWeight:700,marginTop:2}}>⚔ KRIGERE</div>
+        <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>{ui.melees.map((s,i)=>(<button key={`m${i}`} onClick={()=>setUi(u=>({...u,shop:u.shop?.si===i&&u.shop?.isM?null:{fi:0,si:i,isM:true},selB:null}))} style={{width:36,height:34,border:shopTarget?.si===i&&shopTarget?.isM?"2px solid #ff8a65":S.bd,borderRadius:4,background:s?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.01)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"#e6edf3",fontFamily:FN,fontSize:11}}>{s?(<><div style={{width:5,height:5,borderRadius:"50%",background:HEROES[s.type].c}}/><div style={{color:s.hp>0?"#ffd54f":"#ef5350"}}>{s.hp>0?`Lv${s.level}`:"⏳"}</div></>):"+"}</button>))}</div>
+      </div>
+      {/* CENTER: canvas */}
+      <div style={{flex:1,position:"relative",minWidth:0}}>
+        <canvas ref={cvs} width={W} height={H} style={{borderRadius:S.br,border:S.bd,width:"100%",height:"auto",display:"block"}}/>
+        <button onClick={()=>{spdRef.current=spdRef.current>=4?1:spdRef.current*2;setUi(u=>({...u,spd:spdRef.current}));}} style={{position:"absolute",bottom:8,left:8,background:"rgba(0,0,0,0.7)",border:"1px solid #ffd54f",borderRadius:8,padding:"4px 10px",color:"#ffd54f",fontWeight:900,fontSize:16,cursor:"pointer",fontFamily:FN}}>⚡ {ui.spd||1}x</button>
+        {!ui.wA&&ui.wave===0&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"rgba(255,255,255,0.3)",fontSize:16,fontWeight:700,fontFamily:FN}}>Trykk SPACE for å starte</div>}
+      </div>
+      {/* RIGHT: shop panel */}
+      {/* RIGHT PANEL */}
+      {ui.showTree&&ui.classPick?(()=>{const cls=ui.classPick;const cd=CLASSES[cls];const tree=getClassTree(cls);const sk=ui.classSkills||[];const sp=ui.classSkillPts||0;
+        const TW=280,TH=280,tcx=TW/2,tcy=TH/2;
+        const nPos=(node)=>{const ang=(node.col/6)*Math.PI*2-Math.PI/2;const rad=18+node.row*16.5;
+          return{x:tcx+Math.cos(ang)*rad,y:tcy+Math.sin(ang)*rad};};
+        return(<div style={{width:295,flexShrink:0,background:"#06060e",border:`2px solid ${cd.c}25`,borderRadius:8,padding:4,display:"flex",flexDirection:"column",gap:2,overflowY:"auto",maxHeight:H}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:16,fontWeight:900,color:cd.c}}>{cd.n}</div>
+            <button onClick={()=>setUi(u=>({...u,showTree:false}))} style={{background:"transparent",border:"1px solid #222",borderRadius:4,color:"#555",cursor:"pointer",fontFamily:FN,fontSize:16,padding:"4px 8px"}}>✕</button></div>
+          <div style={{fontSize:16,color:sp>0?"#ffd54f":"#444",fontWeight:700,textAlign:"center"}}>🌟 {sp} poeng · {sk.length}/48 ulåst</div>
+          <div style={{position:"relative",width:TW,height:TH,margin:"0 auto"}}>
+            <svg width={TW} height={TH} style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
+              {/* Faint ring guides */}
+              {[0,1,2,3,4,5,6,7].map(r=>(<circle key={r} cx={tcx} cy={tcy} r={18+r*16.5} fill="none" stroke="#0d0d18" strokeWidth={0.5}/>))}
+              {/* Branch lines from center to first ring */}
+              {[0,1,2,3,4,5].map(col=>{const ang=(col/6)*Math.PI*2-Math.PI/2;
+                return(<line key={`br${col}`} x1={tcx} y1={tcy} x2={tcx+Math.cos(ang)*18} y2={tcy+Math.sin(ang)*18} stroke={`${cd.c}20`} strokeWidth={0.5}/>);})}
+              {/* Connection lines between nodes */}
+              {tree.map(node=>{const p=nPos(node);return node.req.map(rid=>{const pn=tree.find(n=>n.id===rid);if(!pn)return null;const pp=nPos(pn);
+                const both=sk.includes(node.id)&&sk.includes(rid);const has1=sk.includes(rid);
+                return(<line key={`${node.id}-${rid}`} x1={pp.x} y1={pp.y} x2={p.x} y2={p.y}
+                  stroke={both?cd.c:has1?"#334":"#111"} strokeWidth={both?2:0.8}
+                  opacity={both?0.9:has1?0.5:0.2}/>);});})}
+              {/* Center star */}
+              <circle cx={tcx} cy={tcy} r={10} fill={`${cd.c}20`} stroke={cd.c} strokeWidth={1.5}/>
+              <circle cx={tcx} cy={tcy} r={4} fill={cd.c} opacity={0.6}/>
+              {/* Decorative stars */}
+              {[...Array(30)].map((_,i)=>(<circle key={`st${i}`} cx={(i*43+11)%TW} cy={(i*29+7)%TH} r={0.4+(i%3)*0.2} fill="#fff" opacity={0.08+i%5*0.03}/>))}
+            </svg>
+            {/* Nodes as glowing dots */}
+            {tree.map(node=>{const p=nPos(node);const unlocked=sk.includes(node.id);const canBuy=sp>0&&!unlocked&&node.req.every(r=>sk.includes(r));const locked=!unlocked&&!canBuy;
+              const sz=unlocked?16:canBuy?14:9;
+              return(<button key={node.id} onClick={()=>{if(canBuy)spendSkill(node.id);}} title={`${node.n}\n${node.d}`}
+                style={{position:"absolute",left:p.x-sz/2,top:p.y-sz/2,width:sz,height:sz,padding:0,
+                  border:unlocked?`2px solid ${cd.c}`:canBuy?"2px solid #4caf50":"1px solid #1a1a2a",
+                  borderRadius:"50%",
+                  background:unlocked?`radial-gradient(circle,${cd.c}80,${cd.c}15)`:canBuy?"radial-gradient(circle,#4caf5050,#4caf5010)":"radial-gradient(circle,#12121a,#08080e)",
+                  cursor:canBuy?"pointer":"default",fontSize:0,color:"transparent",
+                  opacity:locked?0.2:1,
+                  boxShadow:unlocked?`0 0 8px ${cd.c}50,0 0 3px ${cd.c}`:canBuy?"0 0 6px #4caf5030":"none",zIndex:2}}>
+              </button>);})}
+            {/* Center class icon */}
+            <div style={{position:"absolute",left:tcx-8,top:tcy-5,fontSize:15,pointerEvents:"none",textAlign:"center",fontWeight:900,color:cd.c,textShadow:`0 0 8px ${cd.c}`}}>
+              {cd.n.split(" ")[0]}</div>
+          </div>
+          <div style={{display:"flex",gap:2,justifyContent:"center",flexWrap:"wrap"}}>
+            {["Basis","Styrke","Kraft","Mester","Elite","Legend","Titan","Gud"].map((l,i)=>{const cnt=tree.filter(n=>n.row===i&&sk.includes(n.id)).length;
+              return(<span key={i} style={{fontSize:16,padding:"1px 3px",borderRadius:3,background:cnt>0?`${cd.c}15`:"transparent",color:cnt>0?cd.c:"#222",fontWeight:cnt>0?700:400,border:`1px solid ${cnt>0?cd.c+"30":"#111"}`}}>{l} {cnt}/6</span>);})}
+          </div>
+          <div style={{fontSize:16,color:"#333",textAlign:"center"}}>Hold over noder for detaljer · Boss = +1🌟 · {cd.heroes.length} helter</div>
+        </div>);})()
+      :shopTarget?(()=>{const{fi,si,isM}=shopTarget;const arr=isM?ui.melees:ui.floors[fi];const hero=arr?arr[si]:null;const hl=isM?mH:rH;
+        const DIA_C=[3,5,8];
+        if(hero){const hd=HEROES[hero.type],uc=~~((30+hero.level*24)*hd.um);const inWave=ui.wA;
+          return(<div style={{width:210,flexShrink:0,background:S.bg,border:S.bd,borderRadius:S.br,padding:5,display:"flex",flexDirection:"column",gap:2,overflowY:"auto",maxHeight:H}}>
+            <div style={{display:"flex",alignItems:"center",gap:3}}>
+              <div style={{width:24,height:24,borderRadius:6,background:`${hd.c}20`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:hd.c,boxShadow:`0 0 8px ${hd.c}`}}/></div>
+              <div><div style={{fontSize:15,fontWeight:700,color:hd.c}}>{hd.n} Lv{hero.level}{hero.hasS?" ⭐":""}</div>
+                <div style={{fontSize:16,color:"#6e7681"}}>{hd.desc}{hero.diaLvl>0?` · 💎${hero.diaLvl}/3`:""} · {hd.cls}</div></div></div>
+            <div style={{background:"rgba(255,255,255,0.03)",borderRadius:4,padding:5,fontSize:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
+              <div>⚔ Dmg: <b style={{color:"#ef5350"}}>{hero.damage}</b></div>
+              <div>🎯 Rekk: <b style={{color:"#4fc3f7"}}>{hero.range}</b></div>
+              {isM&&<div>❤ HP: <b style={{color:"#66bb6a"}}>{hero.hp}/{hero.maxHp}</b></div>}
+              {isM&&<div>💨 Spd: <b style={{color:"#ffa726"}}>{(hero.spd||0).toFixed(1)}</b></div>}
+              <div>⏱ Rate: <b style={{color:"#b388ff"}}>{hero.fireRate}</b></div>
+              {(hero.crit||0)>0&&<div>💥 Crit: <b>{hero.crit}%</b></div>}
+            </div>
+            {hd.spec&&<div style={{background:"rgba(124,77,255,0.08)",borderRadius:4,padding:3}}>
+              <div style={{fontSize:16,fontWeight:700,color:"#b388ff"}}>⚡ {hd.spec.n}</div>
+              <div style={{fontSize:16,color:"#8b949e"}}>{hd.spec.desc} · {~~(hd.spec.cd/60)}s cd</div>
+              <div style={{width:"100%",marginTop:2,padding:5,borderRadius:4,textAlign:"center",background:hero.specCd>0?"#21262d":"linear-gradient(135deg,#7c4dff,#b388ff)",color:"#fff",fontWeight:700,fontSize:12,fontFamily:FN}}>{hero.specCd>0?`⏱ ${~~(hero.specCd/60)}s`:"✅ AUTO-KLAR!"}</div></div>}
+            {!inWave&&<Btn onClick={()=>upgH(fi,si,isM)} disabled={ui.money<uc}>⬆ Oppgrader ({uc}💰)</Btn>}
+            {inWave&&<div style={{fontSize:15,color:"#6e7681",textAlign:"center"}}>🔒 Kun i pause</div>}
+            {hero.diaLvl<3&&hd.dia&&!inWave&&(()=>{const dc=DIA_C[hero.diaLvl];return(<div>
+              <div style={{fontSize:15,color:"#b388ff",fontWeight:700}}>💎 Nivå {hero.diaLvl+1}/3 ({dc}💎):</div>
+              {hd.dia.map((d,di)=>(<Btn key={di} onClick={()=>diaUpgrade(fi,si,isM,di)} disabled={ui.dia<dc} bg="linear-gradient(135deg,#7c4dff,#b388ff)" style={{fontSize:12}}>{d}</Btn>))}</div>);})()}
+            {!inWave&&<Btn onClick={()=>{sellH(fi,si,isM);setUi(u=>({...u,shop:null,showTree:false}));}} bg="#c62828" style={{fontSize:13}}>Selg ({~~(hd.cost*0.5)}💰)</Btn>}
+          </div>);}
+        const placed=new Set();if(gR.current){for(const fl of gR.current.floors)for(const h of fl)if(h)placed.add(h.type);for(const m of gR.current.melees)if(m)placed.add(m.type);}
+        const allH=Object.entries(HEROES).filter(([k,h])=>isM?(h.t==="m"):(h.t==="r"));
+        const avail=allH.filter(([k])=>!placed.has(k));
+        const tabs=[{id:"alle",n:"Alle",c:"#8b949e"},...Object.entries(CLASSES).map(([id,cl])=>({id,n:cl.n.split(" ")[0]+" "+cl.n.split(" ")[1],c:cl.c}))];
+        const filtered=ui.shopTab==="alle"?avail:avail.filter(([k,h])=>h.cls===ui.shopTab);
+        const sortedFiltered=[...filtered].sort((a,b)=>a[1].cost-b[1].cost);
+        return(<div style={{width:240,flexShrink:0,background:S.bg,border:S.bd,borderRadius:S.br,padding:4,display:"flex",flexDirection:"column",gap:2,overflowY:"auto",maxHeight:H}}>
+          <div style={{fontSize:15,fontWeight:700,color:"#e6edf3",textAlign:"center"}}>{isM?"⚔ BUTIKK — Krigere":"🏹 BUTIKK — Helter"}</div>
+          {/* Class tabs */}
+          <div style={{display:"flex",gap:1,flexWrap:"wrap",justifyContent:"center"}}>
+            {tabs.filter(t=>t.id==="alle"||(isM?["angrep","tank"].includes(t.id):true)).map(t=>{
+              const active=ui.shopTab===t.id;const cnt=t.id==="alle"?avail.length:avail.filter(([k,h])=>h.cls===t.id).length;
+              return(<button key={t.id} onClick={()=>setUi(u=>({...u,shopTab:t.id}))}
+                style={{padding:"4px 8px",border:`1px solid ${active?t.c:t.c+"30"}`,borderRadius:4,
+                  background:active?`${t.c}20`:"transparent",color:active?t.c:"#555",
+                  fontFamily:FN,fontSize:16,fontWeight:active?700:400,cursor:"pointer"}}>
+                {t.id==="alle"?"📋":t.n.split(" ")[0]} {t.id==="alle"?"Alle":t.n.split(" ")[1]} <span style={{color:"#444",fontSize:12}}>({cnt})</span>
+              </button>);})}
+          </div>
+          {/* Class info banner */}
+          {ui.shopTab!=="alle"&&CLASSES[ui.shopTab]&&(<div style={{background:`${CLASSES[ui.shopTab].c}08`,border:`1px solid ${CLASSES[ui.shopTab].c}20`,borderRadius:4,padding:5,textAlign:"center"}}>
+            <div style={{fontSize:15,fontWeight:700,color:CLASSES[ui.shopTab].c}}>{CLASSES[ui.shopTab].n}</div>
+            <div style={{fontSize:16,color:"#555"}}>{CLASSES[ui.shopTab].d}</div>
+            {ui.classPick===ui.shopTab&&<div style={{fontSize:16,color:"#ffd54f"}}>⭐ Din valgte klasse! Skill-tre bonus aktiv</div>}
+          </div>)}
+          <div style={{fontSize:16,color:"#333"}}>{sortedFiltered.length} tilgjengelig · kun 1 av hver · sortert etter pris</div>
+          {/* Hero list */}
+          <div style={{display:"flex",flexDirection:"column",gap:1}}>
+            {sortedFiltered.map(([k,h])=>{const hd=HEROES[k];const ok=ui.money>=h.cost;const clsD=CLASSES[hd.cls];
+              const isChosenCls=ui.classPick===hd.cls;
+              return(<button key={k} onClick={()=>{if(ok){placeH(fi,si,k,isM);setUi(u=>({...u,shop:null,showTree:false}));}}} disabled={!ok}
+                style={{display:"flex",alignItems:"center",gap:3,padding:5,
+                  border:isChosenCls?`1px solid ${clsD?.c||"#333"}30`:S.bd,borderRadius:5,
+                  cursor:ok?"pointer":"default",color:ok?"#e6edf3":"#30363d",fontFamily:FN,fontSize:16,
+                  opacity:ok?1:0.3,background:isChosenCls?`${clsD?.c||"#333"}06`:"transparent"}}>
+                <div style={{width:28,height:28,borderRadius:4,background:`${h.c}15`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"}}>
+                  <div style={{width:12,height:12,borderRadius:"50%",background:h.c,boxShadow:`0 0 5px ${h.c}`}}/>
+                  {isChosenCls&&<div style={{position:"absolute",top:-2,right:-2,fontSize:11}}>⭐</div>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:2}}>
+                    <span style={{fontWeight:700}}>{h.n}</span>
+                    <span style={{fontSize:15,padding:"0px 3px",borderRadius:3,background:`${clsD?.c||"#666"}15`,color:clsD?.c||"#666",border:`1px solid ${clsD?.c||"#666"}25`}}>{hd.cls}</span>
+                  </div>
+                  <div style={{fontSize:16,color:"#6e7681"}}>{h.desc}</div>
+                  <div style={{fontSize:16,color:"#8b949e",display:"flex",gap:3}}>
+                    <span>⚔{hd.dmg}</span>{hd.hp?<span>❤{hd.hp}</span>:null}{hd.rng?<span>🎯{hd.rng}</span>:null}
+                    {hd.spl?<span>💥spl</span>:null}{hd.chain?<span>⚡ch{hd.chain}</span>:null}
+                    {hd.healAmt?<span>💖h{hd.healAmt}</span>:null}{hd.slow?<span>🐌sl</span>:null}
+                  </div>
+                  {hd.spec&&<div style={{fontSize:15,color:"#b388ff"}}>⚡{hd.spec.n}: {hd.spec.desc}</div>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",flexShrink:0}}>
+                  <span style={{color:ok?"#ffa726":"#ef5350",fontWeight:700,fontSize:11}}>{h.cost}</span>
+                  <span style={{fontSize:15,color:"#555"}}>💰</span>
+                </div>
+              </button>);})}
+          </div>
+          {sortedFiltered.length===0&&<div style={{fontSize:16,color:"#6e7681",textAlign:"center",padding:8}}>
+            {avail.length===0?"Alle plassert!":"Ingen i denne kategorien"}</div>}
+        </div>);
+      })()
+      // CLASS PICKER (if no class chosen yet)
+      :!ui.classPick&&ui.wave>=2?(<div style={{width:210,flexShrink:0,background:S.bg,border:"2px solid #ffd54f40",borderRadius:S.br,padding:6,display:"flex",flexDirection:"column",gap:3}}>
+        <div style={{fontSize:16,fontWeight:900,color:"#ffd54f",textAlign:"center"}}>🌳 VELG KLASSE</div>
+        <div style={{fontSize:15,color:"#8b949e",textAlign:"center"}}>Velg 1 klasse — alle helter av den typen styrkes av skill-treet!</div>
+        {Object.entries(CLASSES).map(([k,cls])=>(<button key={k} onClick={()=>pickClass(k)} style={{display:"flex",alignItems:"center",gap:4,padding:5,border:`1px solid ${cls.c}40`,borderRadius:6,
+          background:`${cls.c}08`,cursor:"pointer",fontFamily:FN,color:"#e6edf3",fontSize:13}}>
+          <div style={{fontSize:14}}>{cls.n.split(" ")[0]}</div>
+          <div style={{flex:1}}><div style={{fontWeight:700,color:cls.c}}>{cls.n.split(" ")[1]}</div>
+            <div style={{fontSize:16,color:"#8b949e"}}>{cls.d}</div>
+            <div style={{fontSize:16,color:"#555"}}>{cls.heroes.length} helter</div></div>
+        </button>))}
+      </div>)
+      // SKILL TREE BUTTON (when class chosen, no shop open)
+      :ui.classPick&&!shopTarget?(<div style={{width:160,flexShrink:0,background:S.bg,border:S.bd,borderRadius:S.br,padding:5,display:"flex",flexDirection:"column",gap:3}}>
+        <button onClick={()=>setUi(u=>({...u,showTree:true}))} style={{padding:6,border:`2px solid ${CLASSES[ui.classPick].c}40`,borderRadius:6,
+          background:`${CLASSES[ui.classPick].c}08`,cursor:"pointer",fontFamily:FN,color:CLASSES[ui.classPick].c,fontWeight:700,fontSize:12}}>
+          🌳 Skill Tre<br/><span style={{fontSize:15,color:"#8b949e"}}>{(ui.classSkills||[]).length}/48 · {ui.classSkillPts||0} poeng</span></button>
+        <div style={{fontSize:15,color:"#6e7681",textAlign:"center"}}>{CLASSES[ui.classPick].n}</div>
+        <div style={{fontSize:16,color:"#444",textAlign:"center"}}>Trykk på en slot for å kjøpe/se helter</div>
+      </div>):null}
+    </div>);
+}
+
+
+try {
+  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(BiffauerX));
+} catch(e) {
+  document.getElementById('error').style.display = 'block';
+  document.getElementById('error').textContent = 'Error: ' + e.message + '\n' + e.stack;
+}
+</script>
+</body>
+</html>

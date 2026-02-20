@@ -1,0 +1,10 @@
+{
+  "name": "BIFFAUER X",
+  "short_name": "BiffauerX",
+  "start_url": "index.html",
+  "display": "fullscreen",
+  "background_color": "#010409",
+  "theme_color": "#010409",
+  "orientation": "landscape",
+  "icons": []
+}
