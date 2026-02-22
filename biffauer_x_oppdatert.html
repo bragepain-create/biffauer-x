@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BIFFAUER X</title>
+<meta name="theme-color" content="#010409">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; overflow: hidden; }
+  #root { width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.4/babel.min.js"></script>
+<script>
+if (!window.storage) {
+  try {
+    window.storage = {
+      get: async function(key) { var v = localStorage.getItem('bx_'+key); if(!v) throw new Error('not found'); return {key:key, value: v}; },
+      set: async function(key, value) { localStorage.setItem('bx_'+key, value); return {key:key, value: value}; },
+      delete: async function(key) { localStorage.removeItem('bx_'+key); return {key:key, deleted: true}; },
+      list: async function(prefix) { var keys = []; for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k.indexOf('bx_'+(prefix||''))===0)keys.push(k.replace('bx_',''));} return {keys:keys}; }
+    };
+  } catch(e) {
+    var store = {};
+    window.storage = {
+      get: async function(key) { if(!store[key]) throw new Error('not found'); return {key:key, value: store[key]}; },
+      set: async function(key, value) { store[key] = value; return {key:key, value: value}; },
+      delete: async function(key) { delete store[key]; return {key:key, deleted: true}; },
+      list: async function(prefix) { return {keys: Object.keys(store).filter(function(k){ return !prefix || k.indexOf(prefix)===0; })}; }
+    };
+  }
+}
+</script>
+<script type="text/babel">
+const {useState, useEffect, useCallback, useRef, useMemo} = React;
+
+
+const W=900,H=600,GY=470,CX=130,FH=32;
+const D=(a,b,c,d)=>Math.sqrt((c-a)**2+(d-b)**2);
+const cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rn=(a,b)=>a+Math.random()*(b-a);
+const pk=a=>a[~~(Math.random()*a.length)];
+
+/* ═══════ ERAS ═══════ */
+const ERAS=[
+  {name:"Primitiv",icon:"🦴",waves:[1,10],col:"#8d6e63"},
+  {name:"Steinalder",icon:"🪨",waves:[10,20],col:"#795548"},
+  {name:"Krutt & Kuler",icon:"🔫",waves:[20,30],col:"#546e7a"},
+  {name:"Militær Makt",icon:"💣",waves:[30,40],col:"#d50000"},
+  {name:"Teknologi",icon:"⚡",waves:[40,999],col:"#7c4dff"},
+];
+const getEra=w=>{for(let i=ERAS.length-1;i>=0;i--)if(w>=ERAS[i].waves[0])return i;return 0;};
+
+/* ═══════ WEAPONS ═══════ */
+const WPNS={
+  // ERA 0 (1-10): PRIMITIV - Bare kropps-våpen
+  fist:{d:3,r:25,rt:20,am:99,m:1,era:0},
+  bite:{d:4,r:22,rt:18,am:99,m:1,era:0},
+  claw:{d:5,r:28,rt:22,am:99,m:1,era:0},
+  headbutt:{d:6,r:26,rt:30,am:99,m:1,era:0},
+  kick:{d:4,r:30,rt:24,am:99,m:1,era:0},
+  spit:{d:2,r:60,rt:35,am:20,sp:3,era:0},
+  
+  // ERA 1 (10-20): STEINALDER - Steinøks, steiner, pil og bue, spyd
+  axe_stone:{d:10,r:34,rt:32,am:99,m:1,era:1},
+  rock_throw:{d:8,r:140,rt:45,am:12,sp:4,spl:20,era:1},
+  bow:{d:9,r:200,rt:40,am:15,sp:6,era:1},
+  spear:{d:7,r:45,rt:35,am:99,m:1,era:1},
+  club:{d:8,r:32,rt:28,am:99,m:1,era:1},
+  sling:{d:6,r:160,rt:40,am:18,sp:5,era:1},
+  javelin:{d:9,r:170,rt:50,am:8,sp:6,era:1},
+  bone_club:{d:9,r:30,rt:26,am:99,m:1,era:1},
+  torch:{d:7,r:30,rt:25,am:99,m:1,dot:2,era:1},
+  
+  // ERA 2 (20-30): KRUTT & KULER - Gamle pistoler
+  pistol:{d:14,r:220,rt:35,am:12,sp:12,era:2},
+  flintlock:{d:16,r:180,rt:40,am:8,sp:12,era:2},
+  musket_w:{d:20,r:280,rt:75,am:6,sp:11,era:2},
+  revolver:{d:18,r:200,rt:30,am:6,sp:13,era:2},
+  blunderbuss:{d:24,r:100,rt:60,am:5,sp:8,spl:45,era:2},
+  crossbow:{d:16,r:260,rt:45,am:12,sp:9,era:2},
+  sword:{d:12,r:35,rt:22,am:99,m:1,era:2},
+  bayonet:{d:14,r:35,rt:20,am:99,m:1,era:2},
+  
+  // ERA 3 (30-40): MILITÆR MAKT - Bazooka, helikopter, marine-våpen
+  rifle:{d:20,r:300,rt:50,am:10,sp:14,era:3},
+  shotgun:{d:18,r:120,rt:55,am:8,sp:10,spl:35,era:3},
+  ak47:{d:12,r:280,rt:8,am:30,sp:16,era:3},
+  sniper_r:{d:45,r:450,rt:80,am:8,sp:20,era:3},
+  bazooka:{d:55,r:320,rt:85,am:3,sp:7,spl:70,era:3},
+  rpg:{d:50,r:300,rt:90,am:4,sp:8,spl:65,era:3},
+  minigun:{d:8,r:250,rt:4,am:60,sp:14,era:3},
+  grenade:{d:25,r:180,rt:70,am:5,sp:5,spl:50,era:3},
+  smg:{d:10,r:200,rt:6,am:40,sp:14,era:3},
+  m60:{d:10,r:300,rt:5,am:80,sp:15,era:3},
+  desert_eagle:{d:25,r:250,rt:25,am:10,sp:16,era:3},
+  flamethrower:{d:6,r:100,rt:6,am:50,sp:3,spl:30,dot:5,era:3},
+  mortar:{d:40,r:400,rt:85,am:10,sp:6,spl:70,era:3},
+  dynamite:{d:30,r:150,rt:80,am:3,sp:4,spl:60,era:3},
+  molotov:{d:10,r:140,rt:60,am:6,sp:5,spl:40,dot:4,era:3},
+  c4:{d:80,r:60,rt:120,am:2,sp:0,spl:90,era:3},
+  stinger:{d:40,r:400,rt:50,am:6,sp:22,era:3},
+  napalm:{d:15,r:200,rt:80,am:4,sp:5,spl:60,dot:8,era:3},
+  
+  // ERA 4 (40-100): TEKNOLOGI - Futuristiske våpen
+  laser:{d:30,r:400,rt:15,am:99,sp:25,era:4},
+  plasma:{d:40,r:350,rt:25,am:99,sp:18,spl:45,era:4},
+  railgun:{d:80,r:500,rt:60,am:99,sp:30,era:4},
+  emp:{d:15,r:300,rt:40,am:99,sp:20,stn:60,spl:80,era:4},
+  disruptor:{d:25,r:280,rt:20,am:99,sp:22,sl:80,era:4},
+  nova:{d:100,r:200,rt:100,am:99,sp:0,spl:120,era:4},
+  nanobots:{d:5,r:150,rt:10,am:99,sp:15,dot:8,era:4},
+  gravity:{d:35,r:250,rt:30,am:99,sp:12,spl:60,era:4},
+  antimatter:{d:120,r:400,rt:120,am:3,sp:8,spl:100,era:4},
+  tank_gun:{d:60,r:350,rt:70,am:99,sp:10,spl:55,era:4},
+  airstrike:{d:70,r:500,rt:110,am:2,sp:0,spl:100,era:4},
+  gatling_w:{d:6,r:280,rt:3,am:100,sp:14,era:4},
+  
+  // Healing våpen (alle tidsaldre)
+  herb:{d:0,r:80,rt:40,am:99,sp:3,hl:6,era:0},
+  potion:{d:0,r:100,rt:35,am:12,sp:4,hl:10,era:1},
+  medkit:{d:0,r:120,rt:30,am:8,sp:5,hl:18,era:2},
+  field_med:{d:0,r:150,rt:25,am:15,sp:6,hl:25,era:3},
+  nanoheal:{d:0,r:200,rt:15,am:99,sp:10,hl:40,era:4},
+};
+
+/* ═══════ ENEMIES ═══════ */
+const ENMS={
+  // ERA 0 (1-10): PRIMITIV - Gnomer og slim, INGEN ARMOR
+  gnome_small:{hp:8,spd:1.2,mon:2,sz:12,c:"#8d6e63",n:"Liten Gnom",icon:"👤",era:0},
+  gnome_big:{hp:20,spd:0.8,mon:5,sz:18,c:"#6d4c41",n:"Stor Gnom",icon:"👹",era:0},
+  slime:{hp:12,spd:0.6,mon:3,sz:14,c:"#66bb6a",n:"Slim",icon:"🟢",era:0},
+  
+  // ERA 1 (10-20): STEINALDER - Mammut, gnomer, magikere, helere, slim, MED ARMOR
+  mammoth:{hp:100,spd:0.5,mon:15,sz:28,c:"#5d4037",n:"Mammut",icon:"🦣",ar:8,era:1},
+  gnome_warrior:{hp:30,spd:1.0,mon:6,sz:15,c:"#8d6e63",n:"Gnom Kriger",icon:"⚔️",ar:4,era:1},
+  gnome_mage:{hp:25,spd:0.9,mon:8,sz:15,c:"#7e57c2",n:"Gnom Magiker",icon:"🧙",ar:3,era:1},
+  gnome_healer:{hp:20,spd:0.8,mon:7,sz:14,c:"#66bb6a",n:"Gnom Heler",icon:"💚",hl:2,ar:2,era:1},
+  slime_stone:{hp:18,spd:0.7,mon:4,sz:15,c:"#78909c",n:"Stein-Slim",icon:"🟤",ar:3,era:1},
+  
+  // ERA 2 (20-30): KRUTT & KULER - Mennesker, magikere, ørner, gnomer (ikke slim), MED ARMOR
+  human_soldier:{hp:40,spd:1.1,mon:10,sz:16,c:"#546e7a",n:"Soldat",icon:"🪖",ar:6,era:2},
+  human_mage:{hp:35,spd:0.9,mon:12,sz:16,c:"#9575cd",n:"Magiker",icon:"🔮",ar:4,era:2},
+  eagle:{hp:25,spd:2.0,mon:8,sz:14,c:"#ffa726",n:"Ørn",icon:"🦅",ar:2,era:2},
+  gnome_musket:{hp:35,spd:1.0,mon:9,sz:15,c:"#8d6e63",n:"Gnom Musketer",icon:"🔫",ar:5,era:2},
+  human_cavalry:{hp:60,spd:1.3,mon:15,sz:20,c:"#5d4037",n:"Kavaleri",icon:"🐴",ar:8,era:2},
+  
+  // ERA 3 (30-40): MILITÆR MAKT - Helikopter med magikere, militære enheter, MED ARMOR
+  helicopter:{hp:150,spd:1.5,mon:30,sz:26,c:"#37474f",n:"Helikopter",icon:"🚁",ar:15,era:3},
+  heli_mage:{hp:80,spd:1.2,mon:25,sz:20,c:"#7e57c2",n:"Helikopter Magiker",icon:"🚁🧙",ar:10,era:3},
+  tank:{hp:200,spd:0.6,mon:40,sz:30,c:"#1b5e20",n:"Stridsvogn",icon:"🛡️",ar:25,era:3},
+  marine:{hp:60,spd:1.2,mon:18,sz:17,c:"#0277bd",n:"Marinesoldat",icon:"⚓",ar:12,era:3},
+  commando:{hp:70,spd:1.4,mon:20,sz:17,c:"#c62828",n:"Kommando",icon:"🎖️",ar:14,era:3},
+  artillery:{hp:100,spd:0.5,mon:35,sz:24,c:"#4e342e",n:"Artilleri",icon:"💥",ar:18,era:3},
+  
+  // ERA 4 (40-100): TEKNOLOGI - Futuristiske fiender, MED ARMOR
+  robot:{hp:120,spd:1.3,mon:35,sz:20,c:"#607d8b",n:"Robot",icon:"🤖",ar:20,era:4},
+  drone:{hp:80,spd:2.2,mon:25,sz:16,c:"#42a5f5",n:"Drone",icon:"🛸",ar:15,era:4},
+  cyborg:{hp:150,spd:1.4,mon:40,sz:22,c:"#e53935",n:"Cyborg",icon:"🦾",ar:25,era:4},
+  mech:{hp:300,spd:0.8,mon:60,sz:35,c:"#1565c0",n:"Mech",icon:"🦿",ar:35,era:4},
+  ai_core:{hp:200,spd:0.5,mon:50,sz:28,c:"#9c27b0",n:"AI Kjerne",icon:"🧠",ar:30,hl:3,era:4},
+  plasma_tank:{hp:250,spd:0.7,mon:55,sz:32,c:"#7c4dff",n:"Plasma Tank",icon:"⚡",ar:40,era:4},
+};
+
+/* ═══════ HERO CLASSES ═══════ */
+const HEROES={
+  archer:{n:"Bueskytter",c:"#4fc3f7",w:["bow","crossbow","sniper_r"],icon:"🏹"},
+  warrior:{n:"Kriger",c:"#ef5350",w:["sword","axe_stone","club"],icon:"⚔️"},
+  mage:{n:"Magiker",c:"#ab47bc",w:["spit","plasma","laser"],icon:"🔮"},
+  gunner:{n:"Skytter",c:"#ffa726",w:["pistol","rifle","ak47"],icon:"🔫"},
+  tank:{n:"Tank",c:"#66bb6a",w:["fist","kick","headbutt"],icon:"🛡️"},
+  healer:{n:"Heler",c:"#26a69a",w:["herb","potion","medkit"],icon:"💚"},
+  demo:{n:"Sprengning",c:"#ff7043",w:["grenade","rpg","c4"],icon:"💣"},
+  tech:{n:"Teknolog",c:"#7c4dff",w:["laser","railgun","emp"],icon:"⚡"},
+};
+
+const CLASSES={
+  berserker:{n:"Berserker",c:"#d32f2f",icon:"⚔️",desc:"Dobbel skade, mindre HP",stats:{dmgM:2,hpM:0.7}},
+  tank:{n:"Panser",c:"#388e3c",icon:"🛡️",desc:"Dobbel HP, mindre skade",stats:{hpM:2,dmgM:0.7}},
+  sniper:{n:"Snikskytter",c:"#0288d1",icon:"🎯",desc:"50% ekstra rekkevidde",stats:{rngM:1.5}},
+  rapid:{n:"Rask",c:"#f57c00",icon:"⚡",desc:"Dobbel skytetakt",stats:{rtM:0.5}},
+  splash:{n:"Spreder",c:"#7b1fa2",icon:"💥",desc:"Splash skade",stats:{splM:2}},
+  medic:{n:"Medic",c:"#00897b",icon:"💚",desc:"Heler allierte",stats:{hlM:2}},
+};
+
+const FN="'Segoe UI',system-ui,-apple-system,sans-serif";
+const ovBtn={cursor:"pointer",fontFamily:FN,border:"1px solid rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",gap:4};
+
+/* ═══════ BUILDINGS ═══════ */
+const BLDGS={
+  farm:{n:"Gård",icon:"🌾",bc:50,mx:10,ud:l=>`+${l*2} penger/bølge`,eff:(l,g)=>{g.bMon+=l*2;}},
+  lab:{n:"Lab",icon:"🧪",bc:80,mx:8,ud:l=>`+${l*3} intel/bølge`,eff:(l,g)=>{g.bInt+=l*3;}},
+  barracks:{n:"Kaserne",icon:"🏰",bc:100,mx:5,ud:l=>`+${l} maks helter`,eff:(l,g)=>{g.mHCap+=l;}},
+  wall:{n:"Mur",icon:"🧱",bc:60,mx:15,ud:l=>`+${l*5} slott HP`,eff:(l,g)=>{g.cHP+=l*5;}},
+  tower:{n:"Tårn",icon:"🗼",bc:120,mx:6,ud:l=>`+${l*10}% skade`,eff:(l,g)=>{g.dmgB+=l*0.1;}},
+  vault:{n:"Hvelv",icon:"💰",bc:90,mx:8,ud:l=>`+${l*5}% mer penger`,eff:(l,g)=>{g.monB+=l*0.05;}},
+};
+
+/* ═══════ DIAMOND UPGRADES ═══════ */
+const DIA_UPS={
+  perm_dmg:{n:"Permanent Skade",icon:"⚔️",cost:[5,10,20,40,80],desc:i=>`+${(i+1)*10}% skade`,max:5},
+  perm_hp:{n:"Permanent HP",icon:"❤️",cost:[5,10,20,40,80],desc:i=>`+${(i+1)*10}% HP`,max:5},
+  perm_gold:{n:"Permanent Gull",icon:"💰",cost:[8,15,30,60,120],desc:i=>`+${(i+1)*15}% penger`,max:5},
+  perm_int:{n:"Permanent Intel",icon:"🧠",cost:[8,15,30,60,120],desc:i=>`+${(i+1)*15}% intel`,max:5},
+  start_money:{n:"Start Penger",icon:"💵",cost:[10,20,40],desc:i=>`Start med ${(i+1)*100} penger`,max:3},
+  start_intel:{n:"Start Intel",icon:"💡",cost:[10,20,40],desc:i=>`Start med ${(i+1)*50} intel`,max:3},
+  auto_wave:{n:"Auto Bølge",icon:"⚡",cost:[15],desc:()=>`Auto-start bølger`,max:1},
+  extra_slot:{n:"Ekstra Plass",icon:"➕",cost:[25,50,100],desc:i=>`+${i+1} helteplass`,max:3},
+  castle_armor:{n:"Slott Armor",icon:"🛡️",cost:[12,25,50,100],desc:i=>`+${(i+1)*5} slott armor`,max:4},
+  wave_skip:{n:"Hopp Bølger",icon:"⏭️",cost:[30],desc:()=>`Hopp til bølge 10/20/30/40`,max:1},
+};
+
+function BiffauerX(){
+  const canvRef=useRef(null);
+  const gRef=useRef(null);
+  const spdRef=useRef(1);
+  const [ui,setUi]=useState({
+    phase:"menu",money:0,hp:100,wave:0,kills:0,intel:0,dia:0,
+    floors:[[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null]],
+    melees:[null,null,null,null],bldgs:[null,null,null,null,null],
+    wA:false,shop:null,selB:null,classPick:null,classSkills:[],classSkillPts:0,
+    showTree:false,showDiaTree:false,diaUps:{},spd:1,sandbox:false,sandbox_panel:false,
+    activeSlot:null,savesLoaded:false
+  });
+
+  const g=gRef.current;
+
+  useEffect(()=>{
+    const c=canvRef.current;
+    if(!c)return;
+    c.width=W;c.height=H;
+    const ctx=c.getContext("2d");
+    let af=null;
+    const draw=()=>{
+      ctx.fillStyle="#010409";ctx.fillRect(0,0,W,H);
+      // Castle
+      ctx.fillStyle="#1a1a2a";ctx.fillRect(CX-30,GY-100,60,100);
+      ctx.fillStyle="#2a2a3a";ctx.fillRect(CX-25,GY-95,50,40);
+      ctx.fillStyle="#ffd54f";ctx.font="30px serif";ctx.textAlign="center";ctx.fillText("🏰",CX,GY-60);
+      // Ground
+      ctx.fillStyle="#0d1117";ctx.fillRect(0,GY,W,H-GY);
+      // Floors
+      for(let i=0;i<3;i++){
+        const y=Math.round(H*(0.57-i*0.13));
+        ctx.strokeStyle="rgba(139,148,158,0.15)";ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(200,y);ctx.stroke();
+      }
+      // Melee line
+      const my=Math.round(H*0.72);
+      ctx.strokeStyle="rgba(255,165,0,0.2)";ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.moveTo(180,my);ctx.lineTo(W-20,my);ctx.stroke();
+      ctx.setLineDash([]);
+      if(g){
+        // Projectiles
+        (g.projs||[]).forEach(p=>{
+          ctx.fillStyle=p.c||"#ffd54f";
+          ctx.beginPath();ctx.arc(p.x,p.y,p.sz||3,0,Math.PI*2);ctx.fill();
+        });
+        // Enemies
+        (g.enms||[]).forEach(e=>{
+          ctx.fillStyle=e.c;
+          ctx.beginPath();ctx.arc(e.x,e.y,e.sz,0,Math.PI*2);ctx.fill();
+          if(e.ar>0){
+            ctx.strokeStyle="rgba(255,255,255,0.3)";ctx.lineWidth=2;
+            ctx.beginPath();ctx.arc(e.x,e.y,e.sz+2,0,Math.PI*2);ctx.stroke();
+          }
+          // HP bar
+          const hpP=e.hp/e.mhp;
+          ctx.fillStyle="#222";ctx.fillRect(e.x-e.sz,e.y-e.sz-8,e.sz*2,3);
+          ctx.fillStyle=hpP>0.5?"#66bb6a":hpP>0.25?"#ffa726":"#ef5350";
+          ctx.fillRect(e.x-e.sz,e.y-e.sz-8,e.sz*2*hpP,3);
+        });
+        // Explosions
+        (g.expls||[]).forEach(ex=>{
+          const a=1-ex.t/ex.dur;
+          ctx.fillStyle=`rgba(255,100,50,${a*0.6})`;
+          ctx.beginPath();ctx.arc(ex.x,ex.y,ex.r*(1-a*0.5),0,Math.PI*2);ctx.fill();
+        });
+        // Heroes
+        [...(g.flrH||[]),...(g.melH||[])].forEach(h=>{
+          if(h.hp<=0)return;
+          ctx.fillStyle=h.c;
+          ctx.beginPath();ctx.arc(h.x,h.y,h.sz,0,Math.PI*2);ctx.fill();
+          if(h.tEn){
+            ctx.strokeStyle="rgba(255,100,100,0.4)";ctx.lineWidth=1;
+            ctx.beginPath();ctx.moveTo(h.x,h.y);ctx.lineTo(h.tEn.x,h.tEn.y);ctx.stroke();
+          }
+        });
+      }
+      af=requestAnimationFrame(draw);
+    };
+    draw();
+    return()=>{if(af)cancelAnimationFrame(af);};
+  },[g]);
+
+  const tick=useCallback(()=>{
+    if(!g||!g.wA)return;
+    const dt=16.67/1000*spdRef.current;
+    // Move enemies
+    g.enms.forEach(e=>{
+      e.x-=e.spd*60*dt;
+      if(e.x<CX){
+        const dmg=Math.max(1,10-g.cAr);
+        g.cHP-=dmg;
+        e.hp=0;
+      }
+      if(e.dotT>0){
+        e.dotT-=dt;
+        if(e.dotT<=0){e.hp-=e.dotD;e.dotT=0.5;}
+      }
+      if(e.stnT>0){e.stnT-=dt;e.spd=e.spd0*0.3;}else{e.spd=e.spd0;}
+      if(e.slT>0){e.slT-=dt;e.spd=e.spd0*0.5;}else if(e.stnT<=0){e.spd=e.spd0;}
+    });
+    g.enms=g.enms.filter(e=>e.hp>0&&e.x>-50);
+    // Spawn enemies
+    if(g.enms.length<g.maxE&&Math.random()<0.02*spdRef.current){
+      const era=getEra(g.wave);
+      // Filter fiender basert på era
+      const availEnms=Object.entries(ENMS).filter(([k,v])=>v.era===era);
+      if(availEnms.length>0){
+        const [ek,ev]=pk(availEnms);
+        const hpM=1+(g.wave-ERAS[era].waves[0])*0.1;
+        g.enms.push({
+          x:W+20,y:rn(GY-200,GY-30),spd:ev.spd,spd0:ev.spd,
+          hp:ev.hp*hpM,mhp:ev.hp*hpM,sz:ev.sz,c:ev.c,mon:ev.mon,
+          ar:ev.ar||0,hl:ev.hl||0,dotT:0,dotD:0,stnT:0,slT:0
+        });
+      }
+    }
+    // Heroes shoot
+    [...g.flrH,...g.melH].forEach(h=>{
+      if(h.hp<=0)return;
+      h.cd-=dt;
+      if(h.cd<=0){
+        const w=WPNS[h.wpn];
+        if(!w)return;
+        // Check if weapon is available in current era
+        const era=getEra(g.wave);
+        if(w.era!==undefined && w.era>era){
+          // Weapon not unlocked yet, skip
+          return;
+        }
+        let tgt=null;
+        if(w.hl){
+          const allies=[...g.flrH,...g.melH].filter(a=>a.hp>0&&a.hp<a.mhp&&D(h.x,h.y,a.x,a.y)<w.r);
+          if(allies.length>0)tgt=allies[0];
+        }else{
+          const inR=g.enms.filter(e=>D(h.x,h.y,e.x,e.y)<w.r*h.rngM);
+          if(inR.length>0)tgt=inR[0];
+        }
+        if(tgt){
+          h.tEn=tgt;
+          if(w.m){
+            let dmg=w.d*h.dmgM;
+            if(w.hl){tgt.hp=Math.min(tgt.mhp,tgt.hp+dmg);}
+            else{
+              dmg=Math.max(1,dmg-tgt.ar);
+              tgt.hp-=dmg;
+              if(w.dot)tgt.dotD=w.dot;
+            }
+          }else{
+            g.projs.push({x:h.x,y:h.y,tx:tgt.x,ty:tgt.y,spd:w.sp||8,dmg:w.d*h.dmgM,spl:w.spl?w.spl*h.splM:0,c:h.c,sz:3,dot:w.dot||0,stn:w.stn||0,sl:w.sl||0,hl:w.hl||0,tgt});
+          }
+          if(w.am<99)h.ammo--;
+          h.cd=(w.rt/60)*h.rtM;
+        }
+      }
+    });
+    // Move projectiles
+    g.projs.forEach(p=>{
+      const dx=p.tx-p.x,dy=p.ty-p.y,dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<5||!p.tgt||p.tgt.hp<=0){
+        if(p.spl>0){
+          g.expls.push({x:p.x,y:p.y,r:p.spl,t:0,dur:0.3});
+          g.enms.forEach(e=>{if(D(p.x,p.y,e.x,e.y)<p.spl){let d=Math.max(1,p.dmg-e.ar);e.hp-=d;if(p.dot)e.dotD=p.dot;if(p.stn)e.stnT=p.stn/60;if(p.sl)e.slT=p.sl/60;}});
+        }else if(p.tgt&&p.tgt.hp>0){
+          if(p.hl){p.tgt.hp=Math.min(p.tgt.mhp,p.tgt.hp+p.dmg);}
+          else{let d=Math.max(1,p.dmg-p.tgt.ar);p.tgt.hp-=d;if(p.dot)p.tgt.dotD=p.dot;if(p.stn)p.tgt.stnT=p.stn/60;if(p.sl)p.tgt.slT=p.sl/60;}
+        }
+        p.dead=true;
+      }else{p.x+=dx/dist*p.spd*60*dt;p.y+=dy/dist*p.spd*60*dt;}
+    });
+    g.projs=g.projs.filter(p=>!p.dead);
+    // Explosions
+    g.expls.forEach(ex=>ex.t+=dt);
+    g.expls=g.expls.filter(ex=>ex.t<ex.dur);
+    // Check wave end
+    if(g.enms.length===0&&g.spT<=0&&g.wA){
+      g.wA=false;
+      const mon=50+g.wave*10;
+      const intel=5+g.wave*2;
+      g.money+=mon*(1+g.monB);
+      g.intel+=intel*(1+g.intB);
+      if(g.wave%10===0)g.dia+=1;
+      setUi(u=>({...u,wA:false,money:Math.round(g.money),intel:Math.round(g.intel),dia:g.dia,wave:g.wave,kills:u.kills+g.kills}));
+      g.kills=0;
+      [...g.flrH,...g.melH].forEach(h=>{if(h.hp<=0){h.respT=30;h.hp=0;}else{h.hp=Math.min(h.mhp,h.hp+h.mhp*0.2);}});
+    }else if(g.wA){
+      g.spT-=dt;
+    }
+    // Respawn
+    [...g.flrH,...g.melH].forEach(h=>{if(h.respT>0){h.respT-=dt;if(h.respT<=0){h.hp=h.mhp;h.respT=0;}}});
+    // Update UI
+    setUi(u=>({...u,hp:Math.round(g.cHP)}));
+    if(g.cHP<=0){g.wA=false;alert("Slottet ditt falt! Game Over");setUi(u=>({...u,phase:"menu",wA:false}));}
+  },[g]);
+
+  useEffect(()=>{
+    const iv=setInterval(tick,16.67);
+    return()=>clearInterval(iv);
+  },[tick]);
+
+  const startWave=()=>{
+    if(ui.wA||!g)return;
+    g.wave=ui.wave+1;
+    g.wA=true;
+    g.spT=60;
+    const era=getEra(g.wave);
+    g.maxE=10+era*5;
+    g.enms=[];
+    g.projs=[];
+    g.expls=[];
+    g.kills=0;
+    setUi(u=>({...u,wA:true,wave:g.wave}));
+  };
+
+  const retryWave=()=>{
+    if(ui.wA||ui.wave<1||!g)return;
+    setUi(u=>({...u,wave:u.wave-1}));
+    g.wave=ui.wave-1;
+  };
+
+  const newGame=()=>{
+    const money=(ui.diaUps.start_money||0)*100;
+    const intel=(ui.diaUps.start_intel||0)*50;
+    const cHP=100+(ui.diaUps.perm_hp||0)*10;
+    const cAr=(ui.diaUps.castle_armor||0)*5;
+    gRef.current={
+      wave:0,wA:false,spT:0,enms:[],projs:[],expls:[],flrH:[],melH:[],
+      money,intel,cHP,cAr,maxE:10,kills:0,
+      cUC:100,cAU:50,mUC:80,mHCap:15,
+      bMon:0,bInt:0,dmgB:0,monB:0,intB:0
+    };
+    setUi(u=>({
+      ...u,phase:"game",money,intel,hp:cHP,wave:0,kills:0,
+      floors:[[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null]],
+      melees:[null,null,null,null],bldgs:[null,null,null,null,null],
+      wA:false,shop:null,selB:null,classPick:null,classSkills:[],classSkillPts:0,
+      showTree:false,showDiaTree:false
+    }));
+  };
+
+  const upgC=()=>{
+    if(!g||ui.money<g.cUC)return;
+    g.money-=g.cUC;
+    g.cHP+=20;
+    g.cUC=~~(g.cUC*1.5);
+    setUi(u=>({...u,money:Math.round(g.money),hp:Math.round(g.cHP)}));
+  };
+
+  const upgA=()=>{
+    if(!g||ui.money<g.cAU)return;
+    g.money-=g.cAU;
+    g.cAr+=2;
+    g.cAU=~~(g.cAU*1.5);
+    setUi(u=>({...u,money:Math.round(g.money)}));
+  };
+
+  const addM=()=>{
+    if(!g||ui.money<g.mUC)return;
+    if([...g.flrH,...g.melH].length>=g.mHCap)return alert("Max helter!");
+    g.money-=g.mUC;
+    g.mUC=~~(g.mUC*1.3);
+    setUi(u=>({...u,money:Math.round(g.money)}));
+  };
+
+  const placeBldg=(idx,bid)=>{
+    if(!g)return;
+    const b=BLDGS[bid];
+    if(ui.money<b.bc)return;
+    g.money-=b.bc;
+    const newB={id:bid,lvl:1};
+    const nb=[...ui.bldgs];
+    nb[idx]=newB;
+    setUi(u=>({...u,bldgs:nb,money:Math.round(g.money)}));
+    b.eff(1,g);
+  };
+
+  const upgBldg=(idx)=>{
+    if(!g)return;
+    const b=ui.bldgs[idx];
+    if(!b)return;
+    const def=BLDGS[b.id];
+    const cost=~~(def.bc*(1+b.lvl*0.5));
+    if(ui.money<cost||b.lvl>=def.mx)return;
+    g.money-=cost;
+    b.lvl++;
+    setUi(u=>{const nb=[...u.bldgs];nb[idx]=b;return{...u,bldgs:nb,money:Math.round(g.money)};});
+    def.eff(b.lvl,g);
+  };
+
+  const buyHero=(fi,si,isM,hType)=>{
+    if(!g)return;
+    const h=HEROES[hType];
+    if(!h)return;
+    const cost=100;
+    if(ui.money<cost)return;
+    g.money-=cost;
+    const wpn=h.w[0];
+    const newH={
+      type:hType,wpn,level:1,xp:0,
+      hp:50,mhp:50,x:isM?300+si*44:18+si*22,y:isM?Math.round(H*0.72):Math.round(H*(0.57-fi*0.13)),
+      sz:8,c:h.c,cd:0,ammo:99,tEn:null,respT:0,
+      dmgM:1,hpM:1,rngM:1,rtM:1,splM:1,hlM:1
+    };
+    const cSkills=ui.classSkills||[];
+    if(ui.classPick){
+      const cls=CLASSES[ui.classPick];
+      if(cls){
+        newH.dmgM*=(cls.stats.dmgM||1);
+        newH.hpM*=(cls.stats.hpM||1);
+        newH.rngM*=(cls.stats.rngM||1);
+        newH.rtM*=(cls.stats.rtM||1);
+        newH.splM*=(cls.stats.splM||1);
+        newH.hlM*=(cls.stats.hlM||1);
+      }
+    }
+    newH.hp*=newH.hpM;
+    newH.mhp*=newH.hpM;
+    if(isM){g.melH.push(newH);const nm=[...ui.melees];nm[si]=newH;setUi(u=>({...u,melees:nm,money:Math.round(g.money),shop:null}));}
+    else{g.flrH.push(newH);const nf=[...ui.floors];nf[fi][si]=newH;setUi(u=>({...u,floors:nf,money:Math.round(g.money),shop:null}));}
+  };
+
+  const closeShop=()=>setUi(u=>({...u,shop:null,showTree:false,showDiaTree:false,sandbox_panel:false,selB:null}));
+  const shopTarget=ui.shop&&!ui.showTree&&!ui.showDiaTree&&!ui.sandbox_panel?ui.shop:null;
+  const showPopup=!!shopTarget||ui.showTree||ui.showDiaTree||ui.sandbox_panel||(ui.selB!=null&&ui.bldgs[ui.selB])||(!ui.classPick&&ui.wave>=2);
+  const showCastleUpgPopup=false;
+
+  const renderShopPopup=()=>{
+    const {fi,si,isM}=shopTarget;
+    const slot=isM?ui.melees[si]:ui.floors[fi][si];
+    return(<div>
+      <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>
+        {slot?`${HEROES[slot.type]?.n} Lv${slot.level}`:`Velg Helt ${isM?"(Nahkamp)":""}`}
+      </div>
+      {!slot&&Object.entries(HEROES).map(([k,h])=>(
+        <button key={k} onClick={()=>buyHero(fi,si,isM,k)} disabled={ui.money<100}
+          style={{...ovBtn,justifyContent:"flex-start",width:"100%",padding:"10px 12px",fontSize:14,background:ui.money>=100?"rgba(255,255,255,0.05)":"transparent",color:ui.money>=100?"#e6edf3":"#444",border:`1px solid ${h.c}40`,borderRadius:8,marginBottom:6}}>
+          <span style={{fontSize:20,marginRight:8}}>{h.icon}</span>
+          <div style={{flex:1,textAlign:"left"}}>
+            <div style={{fontWeight:700,color:h.c}}>{h.n}</div>
+            <div style={{fontSize:11,color:"#8b949e"}}>{h.w.map(w=>WPNS[w]?"✓":"✗").join(" ")}</div>
+          </div>
+          <span style={{color:"#ffa726",fontSize:13,fontWeight:700}}>100💰</span>
+        </button>
+      ))}
+      {slot&&(<div>
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:13,color:"#8b949e",marginBottom:6}}>Velg Våpen:</div>
+          {HEROES[slot.type]?.w.map(w=>{
+            const wp=WPNS[w];
+            if(!wp)return null;
+            const era=getEra(ui.wave);
+            const locked=wp.era!==undefined && wp.era>era;
+            return(<button key={w} onClick={()=>{if(!locked){slot.wpn=w;setUi(u=>({...u}));}}}
+              disabled={locked}
+              style={{...ovBtn,width:"100%",padding:"8px 10px",fontSize:13,background:slot.wpn===w?"rgba(255,215,0,0.2)":locked?"rgba(50,50,50,0.3)":"rgba(255,255,255,0.05)",color:locked?"#555":slot.wpn===w?"#ffd700":"#e6edf3",border:`1px solid ${slot.wpn===w?"#ffd700":locked?"#333":"rgba(255,255,255,0.1)"}`,borderRadius:6,marginBottom:4,opacity:locked?0.5:1}}>
+              <div style={{flex:1,textAlign:"left"}}>
+                <span style={{fontWeight:700}}>{w}</span>
+                {locked&&<span style={{marginLeft:8,fontSize:11,color:"#ef5350"}}>🔒 Låst (Era {wp.era+1})</span>}
+              </div>
+              <span style={{fontSize:11,color:"#8b949e"}}>D:{wp.d} R:{wp.r}</span>
+            </button>);
+          })}
+        </div>
+        <button onClick={closeShop} style={{...ovBtn,width:"100%",padding:"10px",fontSize:14,background:"rgba(239,83,80,0.2)",color:"#ef5350",border:"1px solid #ef535040",borderRadius:8}}>Fjern Helt</button>
+      </div>)}
+    </div>);
+  };
+
+  const renderClassPicker=()=>(
+    <div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:8,color:"#e6edf3"}}>Velg Klasse</div>
+      <div style={{fontSize:13,color:"#8b949e",marginBottom:16}}>Dette valget er permanent for dette spillet</div>
+      {Object.entries(CLASSES).map(([k,c])=>(
+        <button key={k} onClick={()=>{setUi(u=>({...u,classPick:k,classSkillPts:1,shop:null}));closeShop();}}
+          style={{...ovBtn,justifyContent:"flex-start",width:"100%",padding:"12px 14px",fontSize:15,background:"rgba(255,255,255,0.05)",color:c.c,border:`2px solid ${c.c}60`,borderRadius:10,marginBottom:8}}>
+          <span style={{fontSize:24,marginRight:10}}>{c.icon}</span>
+          <div style={{flex:1,textAlign:"left"}}>
+            <div style={{fontWeight:900,fontSize:16}}>{c.n}</div>
+            <div style={{fontSize:12,color:"#8b949e",marginTop:2}}>{c.desc}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderSkillTree=()=>(<div style={{fontSize:14,color:"#e6edf3"}}>Skill Tree kommer snart...</div>);
+  const renderDiaTree=()=>(
+    <div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:12,color:"#b388ff"}}>💎 Diamant Oppgraderinger</div>
+      {Object.entries(DIA_UPS).map(([k,up])=>{
+        const lvl=ui.diaUps[k]||0;
+        const cost=up.cost[lvl];
+        const maxed=lvl>=up.max;
+        return(<div key={k} style={{marginBottom:10,padding:10,background:"rgba(179,136,255,0.05)",border:"1px solid rgba(179,136,255,0.2)",borderRadius:8}}>
+          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:18,marginRight:8}}>{up.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:14}}>{up.n}</div>
+              <div style={{fontSize:11,color:"#8b949e"}}>{up.desc(lvl)}</div>
+            </div>
+            <div style={{fontSize:12,color:"#b388ff"}}>Lv {lvl}/{up.max}</div>
+          </div>
+          {!maxed&&<button onClick={()=>{if(ui.dia>=cost){setUi(u=>{const nd={...u.diaUps};nd[k]=(nd[k]||0)+1;return{...u,dia:u.dia-cost,diaUps:nd};});}}}
+            disabled={ui.dia<cost}
+            style={{...ovBtn,width:"100%",padding:"6px 10px",fontSize:12,background:ui.dia>=cost?"rgba(179,136,255,0.3)":"rgba(50,50,60,0.5)",color:ui.dia>=cost?"#b388ff":"#555",border:"1px solid rgba(179,136,255,0.3)",borderRadius:6}}>
+            Oppgrader ({cost}💎)
+          </button>}
+          {maxed&&<div style={{textAlign:"center",fontSize:12,color:"#66bb6a",fontWeight:700}}>✓ MAX</div>}
+        </div>);
+      })}
+    </div>
+  );
+
+  const renderSandbox=()=>(<div style={{fontSize:14,color:"#e6edf3"}}>🔧 Sandbox Panel kommer snart...</div>);
+
+  const saveGame=(slot)=>{
+    const save={ui,g:gRef.current};
+    window.storage.set(`save${slot}`,JSON.stringify(save));
+  };
+
+  const loadGame=(slot)=>{
+    window.storage.get(`save${slot}`).then(res=>{
+      const save=JSON.parse(res.value);
+      gRef.current=save.g;
+      setUi({...save.ui,activeSlot:slot});
+    }).catch(()=>alert("Ingen lagring funnet"));
+  };
+
+  if(ui.phase==="menu"){
+    return(<div style={{width:"100vw",height:"100vh",background:"linear-gradient(135deg,#0d1117,#010409)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:FN,color:"#e6edf3"}}>
+      <div style={{fontSize:48,fontWeight:900,marginBottom:8,background:"linear-gradient(135deg,#ffd54f,#ff6f00)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>BIFFAUER X</div>
+      <div style={{fontSize:16,color:"#8b949e",marginBottom:40}}>Tower Defense Evolution</div>
+      <button onClick={()=>{newGame();setUi(u=>({...u,activeSlot:1}));}} style={{...ovBtn,padding:"16px 32px",fontSize:18,fontWeight:900,background:"linear-gradient(135deg,#1976d2,#42a5f5)",color:"#fff",borderRadius:12,marginBottom:12,border:"none",boxShadow:"0 4px 20px rgba(25,118,210,0.4)"}}>🎮 Nytt Spill</button>
+      <button onClick={()=>loadGame(1)} style={{...ovBtn,padding:"12px 28px",fontSize:16,background:"rgba(255,255,255,0.05)",color:"#e6edf3",borderRadius:10,marginBottom:8}}>📂 Last Spill</button>
+      <button onClick={()=>{setUi(u=>({...u,sandbox:true}));newGame();}} style={{...ovBtn,padding:"12px 28px",fontSize:16,background:"rgba(255,213,79,0.1)",color:"#ffd54f",border:"1px solid #ffd54f40",borderRadius:10}}>🔧 Sandbox Modus</button>
+    </div>);
+  }
+
+  return(
+    <div style={{width:"100vw",height:"100vh",position:"relative",fontFamily:FN,color:"#e6edf3",userSelect:"none"}}>
+      <canvas ref={canvRef} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",objectFit:"contain",background:"#010409"}}/>
+      {/* TOP HUD */}
+      <div style={{position:"absolute",top:0,left:0,right:0,display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:8,pointerEvents:"none"}}>
+        <div style={{display:"flex",gap:6,flexDirection:"column"}}>
+          <div style={{background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"5px 10px",display:"flex",gap:8,fontSize:13,alignItems:"center",color:"#8b949e"}}>
+            <span style={{fontSize:16}}>{ERAS[getEra(ui.wave)]?.icon}</span>
+            <span style={{color:"#e6edf3",fontWeight:700}}>{ERAS[getEra(ui.wave)]?.name}</span>
+          </div>
+          <div style={{background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"5px 10px",display:"flex",gap:8,fontSize:13,alignItems:"center",color:"#8b949e"}}>
+            <span>💰<b style={{color:"#ffa726"}}>{ui.money}</b></span>
+            <span>❤️<b style={{color:"#ef5350"}}>{ui.hp}</b></span>
+            <span>💎<b style={{color:"#b388ff"}}>{ui.dia}</b></span>
+          </div>
+          <div style={{background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"5px 10px",display:"flex",gap:8,fontSize:13,alignItems:"center",color:"#8b949e"}}>
+            <span>🌊<b style={{color:"#4fc3f7"}}>{ui.wave}</b></span>
+            <span>💀<b style={{color:"#e6edf3"}}>{ui.kills}</b></span>
+            <span>🧠<b style={{color:"#66bb6a"}}>{~~ui.intel}</b></span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:4,pointerEvents:"all"}}>
+          <button onClick={()=>{if(ui.activeSlot!=null)saveGame(ui.activeSlot);}} disabled={ui.wA} style={{...ovBtn,padding:"6px 10px",fontSize:13,background:"rgba(46,125,50,0.85)",color:"#fff",opacity:ui.wA?0.4:1}}>💾</button>
+          {ui.sandbox&&<button onClick={()=>setUi(u=>({...u,showDiaTree:false,showTree:false,shop:null,sandbox_panel:!u.sandbox_panel}))} style={{...ovBtn,padding:"6px 10px",fontSize:13,background:ui.sandbox_panel?"rgba(255,213,79,0.4)":"rgba(50,40,10,0.85)",color:"#ffd54f",border:"1px solid #ffd54f40"}}>🔧</button>}
+          <button onClick={()=>{if(ui.activeSlot!=null)saveGame(ui.activeSlot);setUi(u=>({...u,phase:"menu",savesLoaded:false}));}} disabled={ui.wA} style={{...ovBtn,padding:"6px 10px",fontSize:13,background:"rgba(50,50,60,0.85)",color:"#aaa",opacity:ui.wA?0.4:1}}>🏠</button>
+        </div>
+      </div>
+      {/* BOTTOM HUD */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,display:"flex",alignItems:"flex-end",padding:"0 8px 8px",gap:5}}>
+        <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <button onClick={upgC} disabled={!g||ui.money<g?.cUC} style={{...ovBtn,padding:"7px 9px",fontSize:11,flexDirection:"column",background:g&&ui.money>=g?.cUC?"rgba(21,101,192,0.9)":"rgba(20,20,30,0.8)",color:g&&ui.money>=g?.cUC?"#fff":"#333"}}>🏰<br/><span style={{fontSize:9}}>{g?.cUC}💰</span></button>
+          <button onClick={upgA} disabled={!g||ui.money<g?.cAU} style={{...ovBtn,padding:"7px 9px",fontSize:11,flexDirection:"column",background:g&&ui.money>=g?.cAU?"rgba(69,39,160,0.9)":"rgba(20,20,30,0.8)",color:g&&ui.money>=g?.cAU?"#fff":"#333"}}>⚔<br/><span style={{fontSize:9}}>{g?.cAU}💰</span></button>
+          <button onClick={addM} disabled={!g||ui.money<g?.mUC} style={{...ovBtn,padding:"7px 9px",fontSize:11,flexDirection:"column",background:g&&ui.money>=g?.mUC?"rgba(121,85,72,0.9)":"rgba(20,20,30,0.8)",color:g&&ui.money>=g?.mUC?"#fff":"#333"}}>🛡<br/><span style={{fontSize:9}}>{g?.mUC}💰</span></button>
+          {ui.bldgs.map((b,i)=>(<button key={`b${i}`} onClick={()=>setUi(u=>({...u,selB:u.selB===i?null:i,shop:null}))}
+            style={{...ovBtn,padding:"7px 9px",fontSize:14,flexDirection:"column",background:ui.selB===i?"rgba(171,71,188,0.5)":b?"rgba(60,50,40,0.85)":"rgba(20,20,30,0.8)",color:"#e6edf3",border:ui.selB===i?"1px solid #ab47bc":"1px solid rgba(255,255,255,0.06)"}}>
+            {b?BLDGS[b.id].icon:"🏗"}<br/><span style={{fontSize:8,color:"#666"}}>{b?`Lv${b.lvl}`:"bygg"}</span>
+          </button>))}
+          <button onClick={()=>setUi(u=>({...u,showDiaTree:!u.showDiaTree,showTree:false,shop:null}))}
+            style={{...ovBtn,padding:"7px 9px",fontSize:14,flexDirection:"column",background:ui.showDiaTree?"rgba(100,50,180,0.7)":"rgba(20,15,40,0.85)",color:"#b388ff",border:`1px solid ${ui.dia>0?"#b388ff40":"#1a1a2a"}`}}>
+            💎<br/><span style={{fontSize:8,color:"#b388ff"}}>{ui.dia} dia</span>
+          </button>
+          {ui.classPick&&<button onClick={()=>setUi(u=>({...u,showTree:!u.showTree,shop:null,showDiaTree:false}))}
+            style={{...ovBtn,padding:"7px 9px",fontSize:11,flexDirection:"column",background:"rgba(50,30,80,0.85)",color:CLASSES[ui.classPick]?.c||"#fff",border:`1px solid ${CLASSES[ui.classPick]?.c||"#333"}40`}}>
+            🌳<br/><span style={{fontSize:9}}>{(ui.classSkills||[]).length}/48{ui.classSkillPts>0?` 🌟${ui.classSkillPts}`:""}</span>
+          </button>}
+          <button onClick={retryWave} disabled={ui.wA||ui.wave<1} style={{...ovBtn,padding:"7px 9px",fontSize:11,flexDirection:"column",background:"rgba(230,81,0,0.8)",color:"#fff",opacity:ui.wA||ui.wave<1?0.3:1}}>↩<br/><span style={{fontSize:9}}>Tilbake</span></button>
+        </div>
+        <button onClick={startWave} disabled={ui.wA} style={{...ovBtn,padding:"14px 18px",fontSize:16,fontWeight:900,background:ui.wA?"rgba(30,30,40,0.9)":"linear-gradient(135deg,#c62828,#ef5350)",color:ui.wA?"#444":"#fff",borderRadius:14,boxShadow:ui.wA?"none":"0 4px 20px rgba(198,40,40,0.5)",border:"none",flexShrink:0,minWidth:100,flexDirection:"column"}}>
+          {ui.wA?<>⚔<br/>PÅGÅR</>:<>⚔<br/>BØLGE {ui.wave+1}</>}
+        </button>
+      </div>
+      {/* Building popup */}
+      {ui.selB!=null&&!ui.bldgs[ui.selB]&&(
+        <div style={{position:"absolute",bottom:90,left:8,background:"rgba(8,10,18,0.97)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:10,minWidth:180,backdropFilter:"blur(8px)",zIndex:5}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>🏗 Velg Bygning</div>
+          {Object.entries(BLDGS).map(([k,b])=>(<button key={k} onClick={()=>{placeBldg(ui.selB,k);setUi(u=>({...u,selB:null}));}} disabled={ui.money<b.bc}
+            style={{...ovBtn,justifyContent:"flex-start",width:"100%",padding:"6px 8px",fontSize:13,background:ui.money>=b.bc?"rgba(255,255,255,0.05)":"transparent",color:ui.money>=b.bc?"#e6edf3":"#333",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8,marginBottom:3,opacity:ui.money>=b.bc?1:0.4}}>
+            <span style={{fontSize:16}}>{b.icon}</span><span style={{flex:1}}>{b.n}</span><span style={{color:"#ffa726",fontSize:12}}>{b.bc}💰</span>
+          </button>))}
+        </div>
+      )}
+      {ui.selB!=null&&ui.bldgs[ui.selB]&&(()=>{const b=ui.bldgs[ui.selB],def=BLDGS[b.id],cost=~~(def.bc*(1+b.lvl*0.5));return(
+        <div style={{position:"absolute",bottom:90,left:8,background:"rgba(8,10,18,0.97)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:12,minWidth:160,backdropFilter:"blur(8px)",zIndex:5}}>
+          <div style={{fontSize:14,fontWeight:700}}>{def.icon} {def.n} Lv{b.lvl}</div>
+          <div style={{fontSize:12,color:"#8b949e",margin:"4px 0"}}>{def.ud(b.lvl)}</div>
+          {b.lvl<def.mx&&<button onClick={()=>upgBldg(ui.selB)} disabled={ui.money<cost} style={{...ovBtn,width:"100%",padding:8,fontSize:13,background:ui.money>=cost?"rgba(21,101,192,0.8)":"#1a1a2a",color:ui.money>=cost?"#fff":"#444",marginBottom:4}}>⬆ Lv{b.lvl+1} ({cost}💰)</button>}
+          <button onClick={()=>setUi(u=>({...u,selB:null}))} style={{...ovBtn,width:"100%",padding:6,fontSize:12,background:"transparent",color:"#555",border:"1px solid #222"}}>✕ Lukk</button>
+        </div>);})()}
+      {/* Floor + melee slot buttons overlaid on canvas */}
+      {!showPopup&&<>
+        {ui.floors.map((fl,fi)=>fl.map((s,si)=>{
+          const sx=18+si*22,sy=Math.round(H*(0.57-fi*0.13));
+          return(<button key={`fs${fi}${si}`} onClick={()=>setUi(u=>({...u,shop:{fi,si,isM:false},selB:null}))}
+            style={{position:"absolute",left:sx,top:sy,width:36,height:26,border:s?`2px solid ${HEROES[s.type]?.c}80`:"1px dashed rgba(255,255,255,0.2)",borderRadius:6,background:s?"rgba(0,0,0,0.65)":"rgba(0,0,0,0.3)",cursor:"pointer",color:"#e6edf3",fontFamily:FN,fontSize:9,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:0,zIndex:3}}>
+            {s?<><div style={{width:7,height:7,borderRadius:"50%",background:HEROES[s.type]?.c,boxShadow:`0 0 4px ${HEROES[s.type]?.c}`}}/><div style={{fontSize:8,fontWeight:700,color:HEROES[s.type]?.c}}>{HEROES[s.type]?.n?.slice(0,4)}</div></>:<span style={{color:"rgba(255,255,255,0.25)",fontSize:14}}>+</span>}
+          </button>);}))}
+        {ui.melees.map((s,i)=>{
+          const mx=200+i*44,my=Math.round(H*0.72);
+          return(<button key={`ms${i}`} onClick={()=>setUi(u=>({...u,shop:{fi:0,si:i,isM:true},selB:null}))}
+            style={{position:"absolute",left:mx,top:my,width:38,height:26,border:s?`2px solid ${HEROES[s.type]?.c}80`:"1px dashed rgba(255,165,0,0.3)",borderRadius:6,background:s?"rgba(0,0,0,0.65)":"rgba(0,0,0,0.3)",cursor:"pointer",color:"#e6edf3",fontFamily:FN,fontSize:9,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:0,zIndex:3}}>
+            {s?<><div style={{width:7,height:7,borderRadius:"50%",background:HEROES[s.type]?.c}}/><div style={{fontSize:8,color:s.hp>0?"#ffd54f":"#ef5350"}}>{s.hp>0?`Lv${s.level}`:"⏳"}</div></>:<span style={{color:"rgba(255,165,0,0.3)",fontSize:14}}>+</span>}
+          </button>);})}
+      </>}
+      {/* POPUP OVERLAY */}
+      {showPopup&&(<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.65)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10,padding:12}}>
+        <div style={{background:"rgba(8,10,18,0.98)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:16,padding:16,width:"min(420px,95vw)",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.8)"}}>
+          <button onClick={closeShop} style={{...ovBtn,float:"right",padding:"4px 10px",fontSize:14,background:"rgba(255,255,255,0.06)",color:"#666",borderRadius:8,border:"1px solid #222",marginBottom:8,cursor:"pointer"}}>✕</button>
+          {ui.sandbox_panel?renderSandbox():showCastleUpgPopup?renderCastleUpgrade():ui.showDiaTree?renderDiaTree():ui.showTree&&ui.classPick?renderSkillTree():shopTarget?renderShopPopup():(!ui.classPick&&ui.wave>=2)?renderClassPicker():null}
+        </div>
+      </div>)}
+      {/* Speed */}
+      <button onClick={()=>{spdRef.current=spdRef.current>=4?1:spdRef.current*2;setUi(u=>({...u,spd:spdRef.current}));}} style={{position:"absolute",bottom:70,right:8,background:"rgba(0,0,0,0.75)",border:"1px solid #ffd54f",borderRadius:10,padding:"6px 12px",color:"#ffd54f",fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:FN}}>⚡{ui.spd||1}x</button>
+      {!ui.wA&&ui.wave===0&&<div style={{position:"absolute",top:"45%",left:"50%",transform:"translate(-50%,-50%)",color:"rgba(255,255,255,0.2)",fontSize:15,fontWeight:700,pointerEvents:"none",textAlign:"center"}}>Trykk BØLGE for å starte</div>}
+    </div>);
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(BiffauerX));
+</script>
+</body>
+</html>
