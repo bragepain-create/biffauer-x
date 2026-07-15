@@ -1229,6 +1229,9 @@ window.BX_DB = (function() {
     getBroadcast: function(){ return rpc('get_broadcast', {}); },
     heartbeat: function(wave){ return _token ? rpc('heartbeat', { p_token:_token, p_wave: wave|0 }) : Promise.resolve({ok:false}); },
     getLivePlayers: function(){ return _token ? rpc('get_live_players', { p_token:_token }) : Promise.resolve({ok:false}); },
+    // ÷ Admin-kommandoer: admin sender (f.eks. spawn bosser) → alle online spillere utfører dem
+    sendCommand: function(cmd){ return _token ? rpc('send_command', { p_token:_token, p_cmd:cmd }) : Promise.resolve({ok:false}); },
+    getCommands: function(after){ return rpc('get_commands', { p_after: after|0 }); },
     submitItem: function(kind, data){ return _token ? rpc('submit_item', { p_token:_token, p_kind:kind, p_data:data }) : Promise.resolve({ok:false}); },
     getSubmissions: function(){ return _token ? rpc('get_submissions', { p_token:_token }) : Promise.resolve({ok:false}); },
     // ÷ Passord-glemt: sendes UTEN token (personen er ikke innlogget) → admin ser dem
@@ -8843,6 +8846,37 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
     });
     sync();
   }, [sync]);
+  // ÷ ADMIN-KOMMANDO: utfør en kommando admin har sendt til alle (f.eks. "boss:5")
+  const execCommand = useCallback((cmd) => {
+    try {
+      if (window.BX_IS_ADMIN) return;  // admin spawner lokalt selv → unngå dobbelt
+      if (!uiRef.current || uiRef.current.phase !== "playing") return;  // kun spillere som er i et spill
+      var m = String(cmd).split(":");
+      var n = Math.max(1, Math.min(30, parseInt(m[1], 10) || 1));
+      if (m[0] === "boss") spawnAdminMon(n, true);
+      else if (m[0] === "mon") spawnAdminMon(n, false);
+    } catch(e){}
+  }, [spawnAdminMon]);
+  // ÷ Lytt etter admin-kommandoer fra databasen (hvert 3. sek) og utfør nye
+  const _lastCmdId = useRef(null);
+  useEffect(() => {
+    let alive = true;
+    const poll = () => {
+      if (!window.BX_DB || !window.BX_DB.getCommands) return;
+      window.BX_DB.getCommands(_lastCmdId.current == null ? 0 : _lastCmdId.current).then(function(r){
+        if (!alive || !r || !r.ok || !Array.isArray(r.cmds)) return;
+        if (_lastCmdId.current == null) {
+          // første runde: sett utgangspunkt UTEN å utføre gamle kommandoer
+          _lastCmdId.current = r.cmds.length ? r.cmds[r.cmds.length - 1].id : 0;
+          return;
+        }
+        r.cmds.forEach(function(c){ if (c.id > _lastCmdId.current) { _lastCmdId.current = c.id; execCommand(c.cmd); } });
+      }).catch(function(){});
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, [execCommand]);
   // ÷ Admin: stock alt i butikken (overstyr RNG)
   const adminStockShop = useCallback(() => {
     const items = {};
@@ -11083,13 +11117,13 @@ if (typeof window.BX_MUSIC !== "undefined" && ui.musicOn !== false && !window.BX
         style: { fontSize: 11, color: "#666", textAlign: "center", marginBottom: 14, fontStyle: "italic" }
       }, "Innlogget som ", /*#__PURE__*/React.createElement("b", { style: { color: "#ff8a80" } }, "Bragepain")),
 
-      // SPAWN MONSTRE
-      section("🔴 Spawn monstre i nåværende bølge:", [
-        adminBtn("+1 monster", () => spawnAdminMon(1, false)),
-        adminBtn("+5 monstre", () => spawnAdminMon(5, false)),
-        adminBtn("+10 monstre", () => spawnAdminMon(10, false)),
-        adminBtn("+1 BOSS", () => spawnAdminMon(1, true)),
-        adminBtn("+5 BOSSER", () => spawnAdminMon(5, true))
+      // SPAWN MONSTRE — treffer DEG + alle online spillere
+      section("🔴 Spawn monstre (hos deg + alle online!):", [
+        adminBtn("+1 monster", () => { spawnAdminMon(1, false); try{ window.BX_DB && window.BX_DB.sendCommand("mon:1"); }catch(e){} }),
+        adminBtn("+5 monstre", () => { spawnAdminMon(5, false); try{ window.BX_DB && window.BX_DB.sendCommand("mon:5"); }catch(e){} }),
+        adminBtn("+10 monstre", () => { spawnAdminMon(10, false); try{ window.BX_DB && window.BX_DB.sendCommand("mon:10"); }catch(e){} }),
+        adminBtn("+1 BOSS", () => { spawnAdminMon(1, true); try{ window.BX_DB && window.BX_DB.sendCommand("boss:1"); }catch(e){} }),
+        adminBtn("+5 BOSSER", () => { spawnAdminMon(5, true); try{ window.BX_DB && window.BX_DB.sendCommand("boss:5"); }catch(e){} })
       ]),
 
       // SLOTT OG MATTE
