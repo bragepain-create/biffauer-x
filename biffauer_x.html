@@ -12035,11 +12035,7 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     style: { marginTop:8, background:"transparent", border:"2px solid #ab47bc", color:"#ab47bc", borderRadius:10, padding:"8px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
   }, ui.musicOn === false ? "🔇 Musikk AV" : "🎵 Musikk PÅ"),
   // (Slott-skin · Kort · Muspeker · Vanskelighet er flyttet INN I SPILLET — ⚙️ EKSTRA-knapp)
-  // ÷ Butikk-knapp (spinnehjul)
-  /*#__PURE__*/React.createElement("button", {
-    onClick: () => setUi(u => ({...u, showShop: true})),
-    style: { marginTop:8, background:"linear-gradient(90deg,#ffd54f,#ff9a8b)", border:"none", color:"#4a2a6a", borderRadius:10, padding:"9px 28px", fontSize:14, fontWeight:900, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
-  }, "🎁 Butikk — åpne pakker!"),
+  // (Butikk «åpne pakker» er flyttet INN I SPILLET — ⚙️ Ekstra-popup)
   // ÷ Butikk-overlay (spinnehjul + samling)
   ui.showShop && /*#__PURE__*/React.createElement(ShopScreen, { onClose: () => setUi(u => ({...u, showShop: false})), gR: gR }),
   // ÷ Jump scare — velger (10 versjoner)
@@ -13650,6 +13646,7 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     onCards: () => setUi(u => ({...u, showExtras:false, showCardDraw:true})),
     onSkin: () => setUi(u => ({...u, showExtras:false, showSkinPicker:true})),
     onCursor: () => setUi(u => ({...u, showExtras:false, showCursorSkins:true})),
+    onShop: () => setUi(u => ({...u, showExtras:false, showShop:true})),
     onClose: () => setUi(u => ({...u, showExtras:false}))
   }),
   // ÷ Kort-trekk + muspeker-velger (også i spillet, åpnet fra EKSTRA)
@@ -15619,6 +15616,8 @@ function ExtrasOverlay(props) {
         props.canDrawCards ? ("🃏 TREKK KORT — " + props.cardsLeft + " igjen!") : "🃏 Kort (kun før bølge 1)"),
       // SKIN
       React.createElement("button", { onClick:props.onSkin, style: bigBtn("transparent","2px solid #66bb6a","#66bb6a") }, "🏰 Slott-skin"),
+      // BUTIKK (åpne pakker)
+      React.createElement("button", { onClick:props.onShop, style: bigBtn("linear-gradient(90deg,#ffd54f,#ff9a8b)","none","#4a2a6a") }, "🎁 Butikk — åpne pakker!"),
       // MUSPEKER
       React.createElement("button", { onClick:props.onCursor, style: bigBtn("transparent","2px solid #b39ddb", isPC?"#b39ddb":"#666") }, isPC ? "🖱️ Muspeker-skin" : "🖱️ Muspeker (kun PC)"),
       // LUKK
