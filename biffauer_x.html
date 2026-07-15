@@ -6868,13 +6868,7 @@ function createBrain() {
             key: k,
             gen: this.gen
           });
-          g.ft.push({
-            x: W / 2,
-            y: GY - 180,
-            t: `🧠 AI lærte: ${k}!`,
-            life: 120,
-            c: "#ff5252"
-          });
+          // (flytende "🧠 AI lærte: …"-melding fjernet — skal ikke vise at monstrene blir smartere)
         }
       };
       td("flank", 0.04, m.weak.length > 2);
@@ -10225,9 +10219,7 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
       ctx.font = "bold 5px monospace";
       ctx.textAlign = "center";
       ctx.fillText("🏴 FIENDE-FORT", mfx, mfy + 8);
-      // Brain IQ near fort
-      ctx.fillStyle = era >= 3 ? "#ff5252" : "#ff8a65";
-      ctx.fillText(`🧠 ${g.brain.intel.toFixed(0)}`, mfx, mfy + 15);
+      // (🧠 IQ-visning fjernet — monstrene skal ikke "vises som smartere")
       // Wall rendering (if castle has wall upgrade)
       if (g.wall && g.wall.hp > 0) {
         const wx = g.wall.wx || CX + 35,
@@ -11015,49 +11007,7 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
       ctx.font = "bold 8px monospace";
       ctx.textAlign = "right";
       ctx.fillText(diffTier, W - 6, GY + 12);
-      ctx.fillStyle = "#e0e0e0";
-      ctx.font = "bold 7px monospace";
-      ctx.fillText(`🧠 IQ:${g.brain.intel.toFixed(0)} Gen:${g.brain.gen}`, W - 6, GY + 22);
-      let bdy = GY + 22;
-      ctx.fillStyle = "#81c784";
-      ctx.font = "6px monospace";
-      const abilNames = {
-        flank: "Flanke",
-        shareAmmo: "Del ammo",
-        rescue: "Redning",
-        swapWeapon: "Bytt våpen",
-        focusFire: "Fokusild",
-        retreat: "Retrett",
-        shieldWall: "Skjoldmur",
-        surround: "Omring",
-        healAllies: "Heal",
-        rushTactics: "Rush",
-        deathSquad: "Elitelag",
-        siegeMode: "Beleiring",
-        berserkerRage: "Raseri",
-        darkRitual: "Mørkt ritual",
-        swarmIntel: "Svermhirn",
-        titanShield: "Titanskjold",
-        poisonCloud: "Giftsky"
-      };
-      const comboCols = {
-        rushTactics: "#ff6d00",
-        deathSquad: "#d50000",
-        siegeMode: "#ff3d00",
-        berserkerRage: "#ff1744",
-        darkRitual: "#aa00ff",
-        swarmIntel: "#00e5ff",
-        titanShield: "#42a5f5",
-        poisonCloud: "#76ff03"
-      };
-      for (const [k, v] of Object.entries(g.brain.abilities)) {
-        if (v > 0) {
-          ctx.fillStyle = comboCols[k] || "#aaa";
-          ctx.fillText(`✓ ${abilNames[k] || k} ${v >= 5 ? "★★★" : v >= 2 ? "★★" : "★"}`, W - 6, bdy);
-          bdy += 9;
-          if (bdy > H - 4) break;
-        }
-      }
+      // (🧠 IQ + Gen + "lærte ferdigheter"-liste fjernet — monstrene skal ikke vises som smartere)
       // Wave HUD
       if (g.waveActive) {
         ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -13588,11 +13538,7 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     style: {
       color: "#e6edf3"
     }
-  }, ui.kills)), /*#__PURE__*/React.createElement("span", null, "\uD83E\uDDE0", /*#__PURE__*/React.createElement("b", {
-    style: {
-      color: "#66bb6a"
-    }
-  }, ~~ui.intel)))), /*#__PURE__*/React.createElement("div", {
+  }, ui.kills)))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 4,
