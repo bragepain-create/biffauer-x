@@ -7849,9 +7849,12 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
       const el = menuFitRef.current;
       if (!el) return;
       el.style.zoom = "1";
+      // iPad/touch: IKKE krymp — la siden bli lengre og scrolle (zoom er upålitelig på iOS Safari)
+      var touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      if (touch) return;
       const ch = el.scrollHeight, cw = el.scrollWidth;
       const vh = window.innerHeight, vw = window.innerWidth;
-      // skaler til det minste av høyde-passform og bredde-passform (0.96 = liten sikkerhetsmargin)
+      // PC: skaler til det minste av høyde- og bredde-passform (0.96 = liten sikkerhetsmargin)
       var z = Math.min(1, (vh / ch) * 0.96, (vw / cw) * 0.96);
       el.style.zoom = z < 0.999 ? String(Math.max(0.4, z)) : "1";
     };
@@ -11784,7 +11787,8 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     /*#__PURE__*/React.createElement("div", {
     ref: menuFitRef,
     style: {
-      minHeight: "100vh",
+      height: "100vh",
+      maxHeight: "100dvh",   // iOS Safari: takler dynamisk verktøylinje → ingen klipping
       background: "radial-gradient(ellipse at 30% 40%,#1a1030,#010409)",
       display: "flex",
       flexDirection: "column",
@@ -11793,8 +11797,10 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
       fontFamily: FN,
       color: "#e6edf3",
       padding: "16px 20px 24px",
+      boxSizing: "border-box",
       overflowY: "auto",
-      overflowX: "hidden"
+      overflowX: "hidden",
+      WebkitOverflowScrolling: "touch"   // jevn touch-scroll på iPad
     }
   }, ui.showTutorial && React.createElement(TutorialOverlay, {onClose:()=>setUi(u=>({...u,showTutorial:false}))}), /*#__PURE__*/React.createElement("h1", {
     style: {
