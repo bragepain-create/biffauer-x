@@ -8849,12 +8849,22 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
   // ÷ ADMIN-KOMMANDO: utfør en kommando admin har sendt til alle (f.eks. "boss:5")
   const execCommand = useCallback((cmd) => {
     try {
-      if (window.BX_IS_ADMIN) return;  // admin spawner lokalt selv → unngå dobbelt
-      if (!uiRef.current || uiRef.current.phase !== "playing") return;  // kun spillere som er i et spill
+      if (window.BX_IS_ADMIN) return;  // admin gjør handlingen lokalt selv → unngå dobbelt
       var m = String(cmd).split(":");
-      var n = Math.max(1, Math.min(30, parseInt(m[1], 10) || 1));
-      if (m[0] === "boss") spawnAdminMon(n, true);
-      else if (m[0] === "mon") spawnAdminMon(n, false);
+      if (m[0] === "boss" || m[0] === "mon") {
+        if (!uiRef.current || uiRef.current.phase !== "playing") return;  // spawn krever et aktivt spill
+        var n = Math.max(1, Math.min(30, parseInt(m[1], 10) || 1));
+        spawnAdminMon(n, m[0] === "boss");
+      } else if (m[0] === "scare") {
+        // Jump scare hos alle online (også fra menyen — ekstra skummelt)
+        var idx = Math.max(0, Math.min(JUMP_SCARES.length - 1, parseInt(m[1], 10) || 0));
+        var vol = m[2] != null ? (parseInt(m[2], 10) / 100) : 1;
+        var light = m[3] != null ? (parseInt(m[3], 10) / 100) : 0.4;
+        setUi(function(u){ return {...u, jumpScare: {...JUMP_SCARES[idx], vol: vol, light: light}}; });
+      } else if (m[0] === "killall") {
+        // Drep alle monstre hos alle (admin kan "rydde" for vennene)
+        if (gR.current && gR.current.enemies) gR.current.enemies.forEach(function(e){ e.hp = 0; });
+      }
     } catch(e){}
   }, [spawnAdminMon]);
   // ÷ Lytt etter admin-kommandoer fra databasen (hvert 3. sek) og utfør nye
@@ -11129,7 +11139,7 @@ if (typeof window.BX_MUSIC !== "undefined" && ui.musicOn !== false && !window.BX
       // SLOTT OG MATTE
       section("🏰 Slott og matte:", [
         adminBtn("💚 Full HP", () => { const g = gR.current; if (g) { g.hp = g.maxHp; sync(); } }),
-        adminBtn("💀 Drep alle", () => { const g = gR.current; if (g) { for (const e of g.enemies) e.hp = 0; } }),
+        adminBtn("💀 Drep alle (alle online)", () => { const g = gR.current; if (g) { for (const e of g.enemies) e.hp = 0; } try{ window.BX_DB && window.BX_DB.sendCommand("killall:1"); }catch(e){} }),
         adminBtn("⚡ Tving spørsmål", () => {
           const g = gR.current;
           if (g) {
@@ -12044,7 +12054,12 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     ),
     /*#__PURE__*/React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, maxWidth:560 } },
       JUMP_SCARES.map((js, i) => /*#__PURE__*/React.createElement("button", {
-        key:i, onClick: () => setUi(u => ({...u, showJumpMenu:false, jumpScare: {...js, vol:(u.jumpVolume==null?1:u.jumpVolume), light:(u.jumpLight==null?0.4:u.jumpLight)} })),
+        key:i, onClick: () => setUi(u => {
+          var vol = (u.jumpVolume==null?1:u.jumpVolume), light = (u.jumpLight==null?0.4:u.jumpLight);
+          // Send jump scare til ALLE online spillere også
+          try { window.BX_DB && window.BX_DB.sendCommand("scare:" + i + ":" + Math.round(vol*100) + ":" + Math.round(light*100)); } catch(e){}
+          return {...u, showJumpMenu:false, jumpScare: {...js, vol:vol, light:light} };
+        }),
         style: { padding:"14px 8px", borderRadius:14, border:"2px solid #ff5252", background:"rgba(255,255,255,0.08)", color:"#fff", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4, fontFamily:FN }
       }, /*#__PURE__*/React.createElement("div", { style:{ fontSize:34 } }, js.emoji), /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, fontWeight:900 } }, js.n)))
     ),
@@ -13644,6 +13659,8 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
   ui.showCursorSkins && /*#__PURE__*/React.createElement(CursorSkinOverlay, {
     onClose: () => setUi(u => ({...u, showCursorSkins: false}))
   }),
+  // ÷ Jump scare i spillet (også når admin sender skremsel til online spillere)
+  ui.jumpScare && /*#__PURE__*/React.createElement(JumpScareOverlay, { scare: ui.jumpScare, onDone: () => setUi(u => ({...u, jumpScare: null})) }),
   // ÷ NY SHOP-KNAPP — åpner shop uten valgt slot
   /*#__PURE__*/React.createElement("button", {
     onClick: () => {
