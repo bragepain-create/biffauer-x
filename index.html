@@ -11049,6 +11049,13 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
         ctx.textAlign = "center";
         ctx.fillText(`⚔ Bølge ${g.wave} — ${g.enemies.length} 👾`, W / 2, 20);
       }
+      // ÷ LEVEL HUD (topp venstre) — level vises nå I SPILLET
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(6, 5, 78, 20);
+      ctx.fillStyle = "#ffd54f";
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`⭐ Lv ${g.pLevel || 1}`, 12, 19);
       // Era/timeline label top right
       const eraNames = ["🦴 Primitiv", "🪨 Steinalder", "🔫 Krutt & Kuler", "💣 Militær Makt", "⚡ Sci-fi"];
       const eraCols = ["#a1887f", "#8d6e63", "#ff8a65", "#78909c", "#7c4dff"];
@@ -11780,9 +11787,9 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     }
   }, ui.showTutorial && React.createElement(TutorialOverlay, {onClose:()=>setUi(u=>({...u,showTutorial:false}))}), /*#__PURE__*/React.createElement("h1", {
     style: {
-      fontSize: isMob ? 36 : 52,
+      fontSize: isMob ? 42 : 62,
       fontWeight: 900,
-      letterSpacing: isMob ? 4 : 8,
+      letterSpacing: isMob ? 5 : 10,
       background: "linear-gradient(135deg,#ffd54f,#ff8a65,#ef5350,#ab47bc)",
       WebkitBackgroundClip: "text",
       WebkitTextFillColor: "transparent",
@@ -11846,8 +11853,8 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     style: {
       display: "grid",
       gridTemplateColumns: isMob ? "1fr" : "1fr 1fr",
-      gap: isMob ? 10 : 16,
-      maxWidth: 560,
+      gap: isMob ? 12 : 18,
+      maxWidth: 660,
       width: "100%",
       padding: isMob ? "0 8px" : 0
     }
@@ -12014,17 +12021,7 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
       textAlign: "center"
     }
   }, "\uD83E\uDDB4 Primitiv \u2192 \uD83E\uDEA8 Steinalder \u2192 \uD83D\uDD2B Krutt \u2192 \uD83D\uDCA3 Milit\xE6r \u2192 \u26A1 Sci-fi \xB7 Autolagring etter hver b\xF8lge"),
-  // ÷ LEVEL-visning — stort og tydelig med XP-bar
-  /*#__PURE__*/React.createElement("div", { style:{ marginTop:16, display:"flex", flexDirection:"column", alignItems:"center", gap:5 } },
-    /*#__PURE__*/React.createElement("div", { style:{ fontSize:22, fontWeight:900, color:"#ffd54f", letterSpacing:1, textShadow:"0 0 12px rgba(255,213,79,0.5)" } }, "⭐ LEVEL " + (ui.pLevel || 1)),
-    (function(){
-      var lvl = ui.pLevel || 1, xp = ui.pXp || 0, cur = xpForLevel(lvl), next = xpForLevel(lvl + 1);
-      var pct = Math.max(0, Math.min(100, Math.round(((xp - cur) / Math.max(1, next - cur)) * 100)));
-      return /*#__PURE__*/React.createElement("div", { style:{ width:220, height:11, background:"#222", borderRadius:6, overflow:"hidden", border:"1px solid #444" } },
-        /*#__PURE__*/React.createElement("div", { style:{ width:pct + "%", height:"100%", background:"linear-gradient(90deg,#ffd54f,#ff9800)" } }));
-    })(),
-    /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, color:"#888" } }, "🃏 Kort du kan trekke: " + cardsAllowedForLevel(ui.pLevel || 1))
-  ),
+  // (LEVEL vises nå I SPILLET — HUD + ⚙️ EKSTRA-popup, ikke i menyen)
   /*#__PURE__*/React.createElement("button", {
     onClick: () => setUi(u => ({...u, showTutorial: true})),
     style: { marginTop:14, background:"transparent", border:"2px solid #ffd54f", color:"#ffd54f", borderRadius:10, padding:"10px 32px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
@@ -12037,48 +12034,7 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     },
     style: { marginTop:8, background:"transparent", border:"2px solid #ab47bc", color:"#ab47bc", borderRadius:10, padding:"8px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
   }, ui.musicOn === false ? "🔇 Musikk AV" : "🎵 Musikk PÅ"),
-  // ÷ Skin-velger
-  /*#__PURE__*/React.createElement("button", {
-    onClick: () => setUi(u => ({...u, showSkinPicker: true})),
-    style: { marginTop:8, background:"transparent", border:"2px solid #66bb6a", color:"#66bb6a", borderRadius:10, padding:"8px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
-  }, "🏰 Slott-skin"),
-  // ÷ Trekk kort — kun ved start (wave 0), antall bestemt av level
-  (function(){
-    var g = gR.current;
-    var started = g && g.wave > 0;
-    var allowed = cardsAllowedForLevel(ui.pLevel || 1);
-    var drawn = (g && g._cardsDrawn) || 0;
-    var left = Math.max(0, allowed - drawn);
-    var label = started ? "🃏 Kort: trekk før bølge 1 (start på nytt)"
-              : left > 0 ? ("🃏 TREKK KORT — " + left + " igjen!")
-              : "🃏 Alle kort trukket ✓";
-    return /*#__PURE__*/React.createElement("button", {
-      onClick: () => { if (!started) setUi(u => ({...u, showCardDraw: true})); },
-      disabled: started,
-      style: { marginTop:10, background: started ? "#333" : "linear-gradient(90deg,#ffd54f,#ff6f00)", border: started?"none":"3px solid #fff", color: started ? "#888" : "#3a1a00", borderRadius:12, padding:"12px 30px", fontSize:16, fontWeight:900, cursor: started ? "default" : "pointer", fontFamily:FN, letterSpacing:1, boxShadow: started?"none":"0 0 18px rgba(255,180,0,0.6)" }
-    }, label);
-  })(),
-  // ÷ Muspeker-skin (kun PC — 10 stjerne-skins)
-  /*#__PURE__*/React.createElement("button", {
-    onClick: () => setUi(u => ({...u, showCursorSkins: true})),
-    style: { marginTop:8, background:"transparent", border:"2px solid #b39ddb", color:"#b39ddb", borderRadius:10, padding:"8px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:FN, letterSpacing:1 }
-  }, "🖱️ Muspeker-skin (PC)"),
-  // ÷ Vanskelighetsgrad — én knapp for hele monster-kurven
-  (function(){
-    var cur = BX_DIFF();
-    return /*#__PURE__*/React.createElement("div", { style:{ marginTop:12, display:"flex", flexDirection:"column", alignItems:"center", gap:5 } },
-      /*#__PURE__*/React.createElement("div", { style:{ fontSize:11, color:"#888", fontWeight:700, letterSpacing:1 } }, "⚙️ MONSTER-VANSKELIGHET"),
-      /*#__PURE__*/React.createElement("div", { style:{ fontSize:9, color:"#555" } }, "(hvor sterke monstrene er — ikke matte)"),
-      /*#__PURE__*/React.createElement("div", { style:{ display:"flex", gap:6 } },
-        ["lett","normal","vanskelig"].map(function(k){
-          var d = BX_DIFF_TABLE[k], active = cur === k;
-          return /*#__PURE__*/React.createElement("button", { key:k,
-            onClick:function(){ BX_DIFF_SET(k); setUi(function(u){ return {...u, difficulty:k}; }); },
-            style:{ padding:"6px 13px", borderRadius:10, border:"2px solid "+(active?d.c2:"#333"), background: active? d.c2+"22":"transparent", color: active?d.c2:"#777", fontFamily:FN, fontWeight:900, fontSize:12, cursor:"pointer" } }, d.n);
-        })
-      )
-    );
-  })(),
+  // (Slott-skin · Kort · Muspeker · Vanskelighet er flyttet INN I SPILLET — ⚙️ EKSTRA-knapp)
   // ÷ Butikk-knapp (spinnehjul)
   /*#__PURE__*/React.createElement("button", {
     onClick: () => setUi(u => ({...u, showShop: true})),
@@ -13686,6 +13642,27 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
   }, "🎁"),
   // ÷ Pakke-butikk-overlay (også i spillet)
   ui.showShop && /*#__PURE__*/React.createElement(ShopScreen, { onClose: () => setUi(u => ({...u, showShop: false})), gR: gR }),
+  // ÷ EKSTRA-popup in-game (level + vanskelighet + kort + skin + muspeker)
+  ui.showExtras && /*#__PURE__*/React.createElement(ExtrasOverlay, {
+    level: ui.pLevel || 1, xp: ui.pXp || 0,
+    canDrawCards: !(gR.current && gR.current.wave > 0) && (cardsAllowedForLevel(ui.pLevel || 1) - ((gR.current && gR.current._cardsDrawn) || 0)) > 0,
+    cardsLeft: Math.max(0, cardsAllowedForLevel(ui.pLevel || 1) - ((gR.current && gR.current._cardsDrawn) || 0)),
+    onCards: () => setUi(u => ({...u, showExtras:false, showCardDraw:true})),
+    onSkin: () => setUi(u => ({...u, showExtras:false, showSkinPicker:true})),
+    onCursor: () => setUi(u => ({...u, showExtras:false, showCursorSkins:true})),
+    onClose: () => setUi(u => ({...u, showExtras:false}))
+  }),
+  // ÷ Kort-trekk + muspeker-velger (også i spillet, åpnet fra EKSTRA)
+  ui.showCardDraw && /*#__PURE__*/React.createElement(CardDrawOverlay, {
+    allowed: cardsAllowedForLevel(ui.pLevel || 1),
+    drawn: (gR.current && gR.current._cardsDrawn) || 0,
+    level: ui.pLevel || 1,
+    onPick: (card) => { applyCard(card); },
+    onClose: () => setUi(u => ({...u, showCardDraw: false}))
+  }),
+  ui.showCursorSkins && /*#__PURE__*/React.createElement(CursorSkinOverlay, {
+    onClose: () => setUi(u => ({...u, showCursorSkins: false}))
+  }),
   // ÷ NY SHOP-KNAPP — åpner shop uten valgt slot
   /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -13713,6 +13690,16 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
       fontWeight: 900
     })
   }, ui.pendingHero ? ("✕ Avbryt — " + (HEROES[ui.pendingHero]?.n || "")) : "🛒 Butikk"),
+  // ÷ EKSTRA — level + vanskelighet + kort + skin + muspeker (flyttet fra menyen)
+  /*#__PURE__*/React.createElement("button", {
+    onClick: () => setUi(u => ({...u, showExtras: true, shop: null })),
+    title: "Level, kort, vanskelighet, skins",
+    style: Object.assign({}, ovBtn, {
+      padding: "6px 12px", fontSize: 14, fontWeight: 900,
+      background: "linear-gradient(135deg, rgba(126,87,194,0.4), rgba(64,196,255,0.35))",
+      color: "#d1c4e9", border: "1px solid #7e57c2", opacity: 1
+    })
+  }, "⚙️ Ekstra"),
   (ui.sandbox || ui.isAdmin) && /*#__PURE__*/React.createElement("button", {
     onClick: () => setUi(u => ({
       ...u,
@@ -15595,6 +15582,51 @@ function ShopScreen(props) {
 }
 
 // ═══════ JUMP SCARE OVERLAY (fullskjerm · spiller lyd · auto-lukker) ═══════
+// ÷ EKSTRA-popup IN-GAME — samler level + vanskelighet + kort + skin + muspeker
+function ExtrasOverlay(props) {
+  const FN = "monospace";
+  const [diff, setDiff] = React.useState(BX_DIFF());
+  var lvl = props.level || 1, xp = props.xp || 0, cur = xpForLevel(lvl), next = xpForLevel(lvl + 1);
+  var pct = Math.max(0, Math.min(100, Math.round(((xp - cur) / Math.max(1, next - cur)) * 100)));
+  var isPC = !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  const bigBtn = (bg, brd, col) => ({ marginTop:8, width:"100%", background:bg, border:brd, color:col, borderRadius:12, padding:"12px 0", fontSize:15, fontWeight:900, cursor:"pointer", fontFamily:FN, letterSpacing:1 });
+  return React.createElement("div", {
+    style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:10001, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:FN, padding:14 }
+  },
+    React.createElement("div", { style:{ background:"#0d1117", border:"2px solid #7e57c2", borderRadius:16, padding:"20px 22px", width:"min(360px,94vw)", maxHeight:"92vh", overflowY:"auto", boxShadow:"0 0 40px rgba(126,87,194,0.4)" } },
+      React.createElement("div", { style:{ fontSize:20, fontWeight:900, color:"#b39ddb", textAlign:"center", marginBottom:14 } }, "⚙️ EKSTRA"),
+      // LEVEL
+      React.createElement("div", { style:{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, marginBottom:14 } },
+        React.createElement("div", { style:{ fontSize:22, fontWeight:900, color:"#ffd54f", textShadow:"0 0 12px rgba(255,213,79,0.5)" } }, "⭐ LEVEL " + lvl),
+        React.createElement("div", { style:{ width:"100%", height:11, background:"#222", borderRadius:6, overflow:"hidden", border:"1px solid #444" } },
+          React.createElement("div", { style:{ width:pct + "%", height:"100%", background:"linear-gradient(90deg,#ffd54f,#ff9800)" } })),
+        React.createElement("div", { style:{ fontSize:10, color:"#888" } }, "🃏 Kort du kan trekke: " + cardsAllowedForLevel(lvl))
+      ),
+      // VANSKELIGHET
+      React.createElement("div", { style:{ fontSize:11, color:"#888", fontWeight:700, letterSpacing:1, textAlign:"center" } }, "⚙️ MONSTER-VANSKELIGHET"),
+      React.createElement("div", { style:{ fontSize:9, color:"#555", textAlign:"center", marginBottom:6 } }, "(hvor sterke monstrene er — ikke matte)"),
+      React.createElement("div", { style:{ display:"flex", gap:6, justifyContent:"center", marginBottom:14 } },
+        ["lett","normal","vanskelig"].map(function(k){
+          var d = BX_DIFF_TABLE[k], active = diff === k;
+          return React.createElement("button", { key:k, onClick:function(){ BX_DIFF_SET(k); setDiff(k); },
+            style:{ padding:"7px 14px", borderRadius:10, border:"2px solid "+(active?d.c2:"#333"), background: active? d.c2+"22":"transparent", color: active?d.c2:"#777", fontFamily:FN, fontWeight:900, fontSize:12, cursor:"pointer" } }, d.n);
+        })
+      ),
+      React.createElement("div", { style:{ fontSize:10, color:"#666", textAlign:"center", marginBottom:10 } }, "Endringen gjelder fra neste bølge"),
+      // KORT
+      React.createElement("button", { onClick:props.onCards,
+        style: bigBtn(props.canDrawCards ? "linear-gradient(90deg,#ffd54f,#ff6f00)" : "#333", props.canDrawCards?"3px solid #fff":"none", props.canDrawCards?"#3a1a00":"#888") },
+        props.canDrawCards ? ("🃏 TREKK KORT — " + props.cardsLeft + " igjen!") : "🃏 Kort (kun før bølge 1)"),
+      // SKIN
+      React.createElement("button", { onClick:props.onSkin, style: bigBtn("transparent","2px solid #66bb6a","#66bb6a") }, "🏰 Slott-skin"),
+      // MUSPEKER
+      React.createElement("button", { onClick:props.onCursor, style: bigBtn("transparent","2px solid #b39ddb", isPC?"#b39ddb":"#666") }, isPC ? "🖱️ Muspeker-skin" : "🖱️ Muspeker (kun PC)"),
+      // LUKK
+      React.createElement("button", { onClick:props.onClose, style: bigBtn("#2e7d32","none","#fff") }, "🎮 Tilbake til spillet")
+    )
+  );
+}
+
 function CursorSkinOverlay(props) {
   const FN = "monospace";
   const skins = window.CURSOR_SKINS || [];
