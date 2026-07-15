@@ -1232,6 +1232,7 @@ window.BX_DB = (function() {
     // ÷ Admin-kommandoer: admin sender (f.eks. spawn bosser) → alle online spillere utfører dem
     sendCommand: function(cmd){ return _token ? rpc('send_command', { p_token:_token, p_cmd:cmd }) : Promise.resolve({ok:false}); },
     getCommands: function(after){ return rpc('get_commands', { p_after: after|0 }); },
+    setUserAdmin: function(username, admin){ return _token ? rpc('set_user_admin', { p_token:_token, p_username:username, p_admin:!!admin }) : Promise.resolve({ok:false}); },
     submitItem: function(kind, data){ return _token ? rpc('submit_item', { p_token:_token, p_kind:kind, p_data:data }) : Promise.resolve({ok:false}); },
     getSubmissions: function(){ return _token ? rpc('get_submissions', { p_token:_token }) : Promise.resolve({ok:false}); },
     // ÷ Passord-glemt: sendes UTEN token (personen er ikke innlogget) → admin ser dem
@@ -8849,8 +8850,18 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
   // ÷ ADMIN-KOMMANDO: utfør en kommando admin har sendt til alle (f.eks. "boss:5")
   const execCommand = useCallback((cmd) => {
     try {
-      if (window.BX_IS_ADMIN) return;  // admin gjør handlingen lokalt selv → unngå dobbelt
       var m = String(cmd).split(":");
+      // ÷ Gi admin til en spiller — sjekkes FØR admin-guarden (mottakeren er jo ikke admin ennå)
+      if (m[0] === "grantadmin") {
+        if (String(window.BX_USER || "").toLowerCase() === String(m[1] || "").toLowerCase()) {
+          window.BX_IS_ADMIN = true;
+          window.BX_PERMS = { isFullAdmin:true, canDraw:true, canBroadcast:true, canModerate:true, canSeeAllUsers:true };
+          setUi(function(u){ return {...u, isAdmin:true, isFullAdmin:true, perms: window.BX_PERMS}; });
+          try { if (gR.current) gR.current.ft.push({ x: W/2, y: GY - 160, t: "👑 DU BLE ADMIN!", life: 140, c: "#ffd54f" }); } catch(e){}
+        }
+        return;
+      }
+      if (window.BX_IS_ADMIN) return;  // admin gjør handlingen lokalt selv → unngå dobbelt
       if (m[0] === "boss" || m[0] === "mon") {
         if (!uiRef.current || uiRef.current.phase !== "playing") return;  // spawn krever et aktivt spill
         var n = Math.max(1, Math.min(30, parseInt(m[1], 10) || 1));
@@ -17134,7 +17145,15 @@ function LiveSpectator(props) {
         React.createElement('div', { style: { fontSize:12, fontWeight:900, color:'#69f0ae', marginBottom:6 } }, '🟢 Live nå — spiller akkurat nå (' + livePlayers.length + ')'),
         livePlayers.length === 0
           ? React.createElement('div', { style: { fontSize:11, color:'#888' } }, 'Ingen andre spiller akkurat nå')
-          : React.createElement('div', null, livePlayers.map(function(p, i){ return React.createElement('div', { key:i, style: { fontSize:12, color:'#e6edf3', padding:'2px 0' } }, '· ' + p.username + ' — bølge ' + (p.wave || 0)); }))
+          : React.createElement('div', null, livePlayers.map(function(p, i){
+              return React.createElement('div', { key:i, style: { fontSize:12, color:'#e6edf3', padding:'3px 0', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 } },
+                React.createElement('span', null, '· ' + p.username + ' — bølge ' + (p.wave || 0)),
+                window.BX_IS_ADMIN && String(p.username||'').toLowerCase() !== String(window.BX_USER||'').toLowerCase() && React.createElement('button', {
+                  onClick: function(e){ e && e.currentTarget && (e.currentTarget.textContent = '✓ Admin!'); try{ window.BX_DB.setUserAdmin(p.username, true); window.BX_DB.sendCommand('grantadmin:'+p.username); }catch(err){} },
+                  style: { fontSize:10, fontWeight:900, background:'#7e57c2', color:'#fff', border:'none', borderRadius:8, padding:'4px 9px', cursor:'pointer', whiteSpace:'nowrap' }
+                }, '👑 Gjør admin')
+              );
+            }))
       ),
       React.createElement('div', { style: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 } },
         React.createElement('div', null,
