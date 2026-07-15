@@ -14248,7 +14248,21 @@ function LoginScreen({onLogin}) {
         return React.createElement('div', {key:'cont'},
           React.createElement('button', {
             style:{...s.btn, marginTop:0, marginBottom:8, background:'linear-gradient(90deg,#2e7d32,#66bb6a)'},
-            onClick:function(){ try{ window.BX_AUTH.restoreSession(); }catch(e){} onLogin(saved.name); }
+            onClick:async function(){
+              try{ window.BX_AUTH.restoreSession(); }catch(e){}
+              // ÷ Etabler DB-token (så heartbeat + live-spillere funker) — hent passord fra admin-kode eller lagret bruker
+              try {
+                var code = saved.isAdmin ? (window.BX_ADMIN && window.BX_ADMIN.code)
+                                         : ((window.BX_AUTH.getUsers()[String(saved.name).toLowerCase()] || {}).code);
+                if (code && window.BX_DB) {
+                  await Promise.race([
+                    window.BX_DB.loginOrSignup(saved.name, code),
+                    new Promise(function(res){ setTimeout(res, 4000); })
+                  ]);
+                }
+              } catch(e){}
+              onLogin(saved.name);
+            }
           }, '🎮 Fortsett som ' + saved.name + (saved.isAdmin ? ' 👑' : '')),
           React.createElement('div', {style:{...s.sub, margin:'0 0 10px', fontSize:11}}, 'eller logg inn som en annen:')
         );
