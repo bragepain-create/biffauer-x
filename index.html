@@ -7848,21 +7848,26 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
     const fit = () => {
       const el = menuFitRef.current;
       if (!el) return;
-      el.style.zoom = "1";
-      // iPad/touch: IKKE krymp — la siden bli lengre og scrolle (zoom er upålitelig på iOS Safari)
-      var touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-      if (touch) return;
+      el.style.transform = "none";  // nullstill så vi måler naturlig størrelse
       const ch = el.scrollHeight, cw = el.scrollWidth;
-      const vh = window.innerHeight, vw = window.innerWidth;
-      // PC: skaler til det minste av høyde- og bredde-passform (0.96 = liten sikkerhetsmargin)
-      var z = Math.min(1, (vh / ch) * 0.96, (vw / cw) * 0.96);
-      el.style.zoom = z < 0.999 ? String(Math.max(0.4, z)) : "1";
+      // visualViewport = FAKTISK synlig område på iPad (utenom verktøylinje) — mer presist enn innerHeight
+      const vv = window.visualViewport;
+      const vh = vv ? vv.height : window.innerHeight;
+      const vw = vv ? vv.width : window.innerWidth;
+      // FIT by screensize: skaler til det minste av bredde- og høyde-passform (0.985 = bitteliten margin)
+      var z = Math.min(1, (vh / ch) * 0.985, (vw / cw) * 0.985);
+      el.style.transform = z < 0.999 ? ("scale(" + Math.max(0.35, z) + ")") : "none";
     };
     // kjør flere ganger så fonter/emoji rekker å legge seg (ellers feilmåling → klipping)
     const raf = requestAnimationFrame(() => { fit(); requestAnimationFrame(fit); });
-    const t1 = setTimeout(fit, 120), t2 = setTimeout(fit, 400);
+    const t1 = setTimeout(fit, 120), t2 = setTimeout(fit, 400), t3 = setTimeout(fit, 900);
     window.addEventListener("resize", fit);
-    return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); window.removeEventListener("resize", fit); };
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);  // iOS: verktøylinje vises/skjules
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      window.removeEventListener("resize", fit);
+      if (window.visualViewport) window.visualViewport.removeEventListener("resize", fit);
+    };
   }, [ui.phase, ui.pLevel, ui.isAdmin, ui.showTutorial, ui.saves]);
   // ÷ AUTO-GJENOPPTA: ved oppstart (reload / fane-bytte) — hopp rett inn i spillet der du var
   const _resumeTried = React.useRef(false);
@@ -11787,8 +11792,10 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     /*#__PURE__*/React.createElement("div", {
     ref: menuFitRef,
     style: {
-      height: "100vh",
-      maxHeight: "100dvh",   // iOS Safari: takler dynamisk verktøylinje → ingen klipping
+      position: "absolute",
+      top: 0, left: 0, width: "100%",
+      minHeight: "100dvh",   // fyller synlig skjerm; vokser hvis innhold er høyere (skaleres da ned)
+      transformOrigin: "top center",   // skaleres fra toppen så alt får plass, sentrert
       background: "radial-gradient(ellipse at 30% 40%,#1a1030,#010409)",
       display: "flex",
       flexDirection: "column",
@@ -11796,11 +11803,12 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
       justifyContent: "flex-start",
       fontFamily: FN,
       color: "#e6edf3",
-      padding: "16px 20px 24px",
+      paddingTop: "calc(14px + env(safe-area-inset-top))",   // klarer iPad-verktøylinja/notch øverst
+      paddingBottom: "calc(22px + env(safe-area-inset-bottom))",
+      paddingLeft: "18px",
+      paddingRight: "18px",
       boxSizing: "border-box",
-      overflowY: "auto",
-      overflowX: "hidden",
-      WebkitOverflowScrolling: "touch"   // jevn touch-scroll på iPad
+      overflow: "hidden"
     }
   }, ui.showTutorial && React.createElement(TutorialOverlay, {onClose:()=>setUi(u=>({...u,showTutorial:false}))}), /*#__PURE__*/React.createElement("h1", {
     style: {
