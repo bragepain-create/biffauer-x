@@ -1233,6 +1233,7 @@ window.BX_DB = (function() {
     sendCommand: function(cmd){ return _token ? rpc('send_command', { p_token:_token, p_cmd:cmd }) : Promise.resolve({ok:false}); },
     getCommands: function(after){ return rpc('get_commands', { p_after: after|0 }); },
     setUserAdmin: function(username, admin){ return _token ? rpc('set_user_admin', { p_token:_token, p_username:username, p_admin:!!admin }) : Promise.resolve({ok:false}); },
+    getAllUsers: function(){ return _token ? rpc('get_all_users', { p_token:_token }) : Promise.resolve({ok:false}); },
     submitItem: function(kind, data){ return _token ? rpc('submit_item', { p_token:_token, p_kind:kind, p_data:data }) : Promise.resolve({ok:false}); },
     getSubmissions: function(){ return _token ? rpc('get_submissions', { p_token:_token }) : Promise.resolve({ok:false}); },
     // ÷ Passord-glemt: sendes UTEN token (personen er ikke innlogget) → admin ser dem
@@ -8921,6 +8922,22 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
     }, 700);
     return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); clearInterval(tick); };
   }, [startWave]);
+  // ÷ Registrerte DB-spillere (til Bruker-administrasjon) — hentes når admin-panelet er åpent
+  const [dbUsers, setDbUsers] = useState([]);
+  useEffect(() => {
+    if (!ui.admin_panel || !ui.isFullAdmin) return;
+    let alive = true;
+    const load = () => { try { if (window.BX_DB && window.BX_DB.getAllUsers) window.BX_DB.getAllUsers().then(function(r){ if (alive && r && r.ok && Array.isArray(r.users)) setDbUsers(r.users); }); } catch(e){} };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, [ui.admin_panel, ui.isFullAdmin]);
+  const grantAdminTo = useCallback((username, makeAdmin) => {
+    try {
+      if (window.BX_DB) { window.BX_DB.setUserAdmin(username, makeAdmin); if (makeAdmin) window.BX_DB.sendCommand('grantadmin:' + username); }
+      setDbUsers(function(list){ return list.map(function(u){ return String(u.username).toLowerCase() === String(username).toLowerCase() ? {...u, is_admin: makeAdmin} : u; }); });
+    } catch(e){}
+  }, []);
   // ÷ Admin: stock alt i butikken (overstyr RNG)
   const adminStockShop = useCallback(() => {
     const items = {};
@@ -11521,7 +11538,21 @@ if (typeof window.BX_MUSIC !== "undefined" && ui.musicOn !== false && !window.BX
         }
       },
         /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 900, color: "#ff8a80", marginBottom: 4 } }, "🔑 Bruker-administrasjon"),
-        /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#888", marginBottom: 8 } }, "Se passord og gi mini-admin-rettigheter."),
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#888", marginBottom: 8 } }, "Se passord, gi mini-admin (lokalt) og gi admin til online-spillere."),
+        // ÷ Registrerte DB-spillere (Bob osv.) — gi/fjern admin her
+        dbUsers.length > 0 && /*#__PURE__*/React.createElement("div", { style: { marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #333" } },
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, fontWeight: 900, color: "#69f0ae", marginBottom: 5 } }, "🌐 Registrerte spillere (" + dbUsers.length + ")"),
+          dbUsers.map(function(u){
+            var me = String(u.username).toLowerCase() === String(window.BX_USER||"").toLowerCase();
+            return /*#__PURE__*/React.createElement("div", { key: "db" + u.username, style: { display:"flex", justifyContent:"space-between", alignItems:"center", background:"#0a0a14", border:"1px solid " + (u.is_admin?"#ffd54f55":"#333"), borderRadius:6, padding:"6px 8px", marginBottom:4 } },
+              /*#__PURE__*/React.createElement("span", { style:{ fontSize:12, color:"#fff", fontWeight:700 } }, (u.is_admin?"👑 ":"👤 ") + u.username + (me?" (deg)":"")),
+              !me && /*#__PURE__*/React.createElement("button", {
+                onClick: function(){ grantAdminTo(u.username, !u.is_admin); },
+                style: { fontSize:10, fontWeight:900, background: u.is_admin?"#37474f":"#7e57c2", color:"#fff", border:"none", borderRadius:6, padding:"4px 9px", cursor:"pointer", fontFamily:FN, whiteSpace:"nowrap" }
+              }, u.is_admin ? "Fjern admin" : "👑 Gjør admin")
+            );
+          })
+        ),
         (function() {
           const users = window.BX_AUTH.getUsers();
           const userArr = Object.values(users);
