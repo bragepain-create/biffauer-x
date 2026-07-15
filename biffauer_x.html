@@ -6919,16 +6919,11 @@ function spawnMon(wave, boss, brain, wD) {
   const allRaces = Object.entries(RACES);
   const weighted = [];
   for (const [k, r] of allRaces) {
+    if (r.t === "healer") continue;   // ÷ Healer-monstre fjernet (helbredet de andre — gjorde det for vanskelig)
     const w = r.era === era ? 10 : Math.abs(r.era - era) === 1 ? 4 : 1;
     for (let i = 0; i < w; i++) weighted.push([k, r]);
   }
-  // Force healer: every 5th spawn is a healer
-  const forceHealer = wD && wD.sp > 0 && wD.sp % 5 === 0;
   let [rk, race] = pk(weighted);
-  if (forceHealer) {
-    const healers = allRaces.filter(([, r]) => r.t === "healer");
-    if (healers.length) [rk, race] = pk(healers);
-  }
   if (boss) {
     const big = allRaces.filter(([, r]) => r.t === "tank" || r.t === "boss" || r.t === "elite" || r.t === "siege");
     if (big.length) [rk, race] = pk(big);
@@ -6988,6 +6983,10 @@ function spawnMon(wave, boss, brain, wD) {
     hpM *= wD.diffMul;
     dmgM *= wD.diffMul;
   }
+  // ÷ BALANSE (Brage): monstrene er SVAKERE — de gjør mindre skade (mindre dødelige),
+  //   men beholder mer og mer HP over bølgene (utfordringen er å drepe dem, ikke å overleve).
+  dmgM *= 0.5;
+  hpM *= 1.15;
   const arm = Math.min(~~(wave * 0.8 + era * 4 + (wave > 20 ? (wave - 20) * 1.5 : 0)), 80),
     bm = boss ? 3 + wave * 0.2 : 1,
     sc = boss ? 1.5 : isElite ? 1.2 : 1;
