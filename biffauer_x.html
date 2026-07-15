@@ -14328,8 +14328,8 @@ function LoginScreen({onLogin}) {
           ? React.createElement('span', null, 'Ny bruker? ', React.createElement('span',{style:s.toggleSpan},'Registrer her'))
           : React.createElement('span', null, 'Har konto? ', React.createElement('span',{style:s.toggleSpan},'Logg inn'))
       ),
-      users.length > 0 && React.createElement('div', {style:s.users}, `👥 Spillere: ${users.join(', ')}`),
-      React.createElement('div', {'data-component':'versjon-markor', style:{marginTop:14, color:'#4caf50', fontSize:10, letterSpacing:1, opacity:0.8}}, '✓ v5 · cursor-skins + kattetorn')
+      // (brukerlista er fjernet fra login-siden — skal ikke vises)
+      React.createElement('div', {'data-component':'versjon-markor', style:{marginTop:14, color:'#4caf50', fontSize:10, letterSpacing:1, opacity:0.8}}, '✓ v6 · privat innlogging')
     )
   );
 }
