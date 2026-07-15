@@ -1070,6 +1070,12 @@ window.BX_AUTH = {
     } catch(e){}
   },
   clearSession: function() { try { localStorage.removeItem('bx_session'); } catch(e){} },
+  // Les lagret sesjon UTEN å logge inn (til "Fortsett som"-knappen på login)
+  peekSession: function() {
+    try { var s = JSON.parse(localStorage.getItem('bx_session') || 'null'); if (s && s.name) return s; } catch(e){}
+    return null;
+  },
+  // Gjenopprett sesjonen (settes når man trykker "Fortsett som") — logger inn igjen uten passord
   restoreSession: function() {
     try {
       var s = JSON.parse(localStorage.getItem('bx_session') || 'null');
@@ -1084,8 +1090,8 @@ window.BX_AUTH = {
     return null;
   }
 };
-// Hent tilbake forrige innlogging med en gang (før React starter)
-window.BX_AUTH.restoreSession();
+// ÷ Ved app-start: IKKE auto-logg-inn. Man skal alltid lande på login-siden.
+//   Sesjonen huskes, men brukes bare via "Fortsett som"-knappen (ett trykk, uten passord).
 
 // Storage that prefixes with current user
 // ═══════ IMPROVED STORAGE SYSTEM ═══════
@@ -14291,6 +14297,18 @@ function LoginScreen({onLogin}) {
     React.createElement('div', {style:s.box},
       React.createElement('div', {style:s.title}, '🏰 BIFFAUER X'),
       React.createElement('div', {style:s.sub}, mode==='login' ? 'Logg inn for å spille og dele baner' : 'Lag ny bruker'),
+      // ÷ "Fortsett som" — huskede spillere logger inn med ett trykk (uten passord)
+      mode==='login' && (function(){
+        var saved = (window.BX_AUTH && window.BX_AUTH.peekSession) ? window.BX_AUTH.peekSession() : null;
+        if (!saved) return null;
+        return React.createElement('div', {key:'cont'},
+          React.createElement('button', {
+            style:{...s.btn, marginTop:0, marginBottom:8, background:'linear-gradient(90deg,#2e7d32,#66bb6a)'},
+            onClick:function(){ try{ window.BX_AUTH.restoreSession(); }catch(e){} onLogin(saved.name); }
+          }, '🎮 Fortsett som ' + saved.name + (saved.isAdmin ? ' 👑' : '')),
+          React.createElement('div', {style:{...s.sub, margin:'0 0 10px', fontSize:11}}, 'eller logg inn som en annen:')
+        );
+      })(),
       React.createElement('label', {style:s.label}, 'Brukernavn'),
       React.createElement('input', {style:s.input, value:username, placeholder:'ditt navn...', onChange:e=>setUsername(e.target.value), onKeyDown:e=>e.key==='Enter'&&handle()}),
       React.createElement('label', {style:s.label}, 'Passord (tall + bokstaver, opptil 24)'),
