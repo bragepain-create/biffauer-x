@@ -12405,15 +12405,17 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
       }
       var resetAtNow = ui.shopStock.resetAt;
     }
-    // Filtrer på stock og level-krav
+    // Filtrer på stock og level-krav — ADMIN omgår level-gaten (ser alt i lager)
+    const isAdm = ui.isFullAdmin || window.BX_IS_ADMIN;
     const avail = notPlaced.filter(([k]) => {
       if (!stockNow[k]) return false;
+      if (isAdm) return true;  // admin: alt i lager, uansett level
       const lvlReq = LEVEL_GATES[k] || 1;
       if ((ui.pLevel || 1) < lvlReq) return false;
       return true;
     });
-    // For visning: hvor mange er låst pga. level eller utsolgt
-    const lockedByLevel = notPlaced.filter(([k]) => stockNow[k] && (ui.pLevel || 1) < (LEVEL_GATES[k] || 1));
+    // For visning: hvor mange er låst pga. level eller utsolgt (admin har ingen låst)
+    const lockedByLevel = isAdm ? [] : notPlaced.filter(([k]) => stockNow[k] && (ui.pLevel || 1) < (LEVEL_GATES[k] || 1));
     const outOfStock = notPlaced.filter(([k]) => !stockNow[k]);
     const minLeft = Math.max(0, Math.ceil((resetAtNow - now) / 1000));
     const tabs = [{
@@ -12447,7 +12449,9 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
         borderRadius: 6,
         padding: "4px 8px"
       }
-    }, "🔄 Ny stock om ", Math.floor(minLeft/60), ":", String(minLeft%60).padStart(2,'0'),
+    }, minLeft > 600
+         ? "🛒 Alt i lager (admin)"
+         : ("🔄 Ny stock om " + Math.floor(minLeft/60) + ":" + String(minLeft%60).padStart(2,'0')),
        outOfStock.length > 0 ? " · " + outOfStock.length + " utsolgt" : "",
        lockedByLevel.length > 0 ? " · " + lockedByLevel.length + " låst (level)" : ""
     ), /*#__PURE__*/React.createElement("div", {
