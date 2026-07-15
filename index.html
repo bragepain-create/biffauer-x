@@ -13639,7 +13639,12 @@ if (ui.phase === "menu") return /*#__PURE__*/React.createElement("div", { "data-
     style: {
       display: "flex",
       gap: 4,
-      pointerEvents: "all"
+      pointerEvents: "all",
+      flexWrap: "wrap",          // ÷ bryt til flere rader i stedet for å klippe (portrait/smal skjerm)
+      justifyContent: "flex-end",
+      flex: 1,
+      minWidth: 0,
+      marginLeft: 8
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
