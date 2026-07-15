@@ -8887,6 +8887,29 @@ function BiffauerX({currentUser, viewingUser, setViewingUser, onLogout, onMulti}
     const id = setInterval(poll, 3000);
     return () => { alive = false; clearInterval(id); };
   }, [execCommand]);
+  // ÷ ADMIN-AUTOKLIKKER: 1+2+3+4 samtidig = PÅ · 5+6+7+8 samtidig = AV (auto-starter bølger)
+  const _autoClick = useRef(false);
+  useEffect(() => {
+    const pressed = new Set();
+    const flash = (t, c) => { try { if (gR.current) gR.current.ft.push({ x: W/2, y: GY - 160, t: t, life: 90, c: c || "#ffd54f" }); } catch(e){} };
+    const onDown = (e) => {
+      if (!window.BX_IS_ADMIN) return;
+      if (/^[1-8]$/.test(e.key)) {
+        pressed.add(e.key);
+        if (["1","2","3","4"].every(function(k){ return pressed.has(k); }) && !_autoClick.current) { _autoClick.current = true; flash("🖱️ AUTOKLIKKER PÅ", "#66bb6a"); }
+        if (["5","6","7","8"].every(function(k){ return pressed.has(k); }) && _autoClick.current) { _autoClick.current = false; flash("🖱️ AUTOKLIKKER AV", "#ef5350"); }
+      }
+    };
+    const onUp = (e) => { pressed.delete(e.key); };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    const tick = setInterval(function(){
+      if (!_autoClick.current) return;
+      const g = gR.current;
+      if (g && uiRef.current && uiRef.current.phase === "playing" && !g.waveActive) startWave();
+    }, 700);
+    return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); clearInterval(tick); };
+  }, [startWave]);
   // ÷ Admin: stock alt i butikken (overstyr RNG)
   const adminStockShop = useCallback(() => {
     const items = {};
