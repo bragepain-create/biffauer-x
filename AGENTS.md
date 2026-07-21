@@ -41,7 +41,7 @@ Grunnprinsippene:
 ## 🎮 Hva prosjektet er (teknisk)
 
 - **`index.html`** — HELE spillet i én fil. React 18 + PeerJS lastes fra CDN. **Ingen byggesteg.** Åpne fila i nettleseren, så kjører spillet.
-- **`database/`** — SQL for Supabase (innlogging, lagring, online-spillere, admin-kommandoer). Valgfritt — spillet funker lokalt uten (lagrer i nettleseren).
+- **`database/setup.sql`** — HELE Supabase-oppsettet i ÉN fil (matcher live-databasen 1:1). Spillet **kobler seg allerede til en database** via anon-nøkkelen i `index.html` — Brage trenger IKKE gjøre noe. `setup.sql` er kun for å lage en NY/egen database. Se `database/README.md` for nøkkel-forklaring (anon = trygt/inkludert · secret = aldri). Uten database funker spillet lokalt (nettleser-lagring).
 - Vanilla JavaScript + canvas-motor. `React.createElement` (ikke JSX).
 - Publisert gratis via **GitHub Pages**: https://bragepain-create.github.io/biffauer-x/
 
