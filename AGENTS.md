@@ -4,6 +4,22 @@ Hei! Hvis du er en AI-assistent som nettopp åpnet dette prosjektet — les dett
 
 ---
 
+## ⚠️ FØR SKOLE-LANSERING — MÅ GJØRES (les dette!)
+
+Spillet har en **hardkodet admin-innlogging** (`Bragepain` / `123456y`) som ligger synlig i `index.html`. Det er **helt med vilje** — Brage bruker den under LOKAL utvikling så han slipper å huske passord.
+
+**MEN: den MÅ fjernes/sikres FØR spillet brukes offentlig (på skolen).** Ellers kan hvem som helst «vis kildekode», finne koden, og bli admin.
+
+👉 **Når Brage/mamma sier «vi skal på skolen», «gå live», «produksjon» e.l. — GJØR DETTE FØRST:**
+1. Søk i `index.html` etter: `SIKKERHET — MÅ FJERNES FØR SKOLE` (to steder)
+2. Fjern `window.BX_ADMIN`-koden + hele admin-snarvei-blokka i `BX_AUTH.login`
+3. La admin-status komme KUN fra databasen (`window.BX_DB.isAdmin()` etter innlogging), med et **hemmelig passord** satt på `Bragepain`-brukeren i databasen (bytt fra `123456y` til noe hemmelig via SQL)
+4. Sørg for at admin-økter IKKE lagres i `bx_session` (så «Fortsett som Bragepain» aldri lekker på en delt PC)
+
+*(Denne fremgangsmåten er testet — spør om detaljer om du er usikker. Ikke hopp over dette steget før skolen.)*
+
+---
+
 ## 👦 Hvem du hjelper
 
 **Brage er 12 år** og lager dette spillet selv — **BIFFAUER X**, et tower-defense-spill han bygger som en gave til faren sin. Han er skaperen. Du er med-skaperen (co-creator), ikke bare et verktøy.

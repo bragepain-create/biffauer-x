@@ -919,11 +919,19 @@ window.BX_USER = null; // current logged-in username
 window.BX_IS_ADMIN = false; // satt til true for admin-brukeren
 
 // ═══════ ADMIN-KONTO (innebygd) ═══════
-// Brukernavn "Bragepain" + kode "1235" gir admin-rettigheter.
-// Innlogging er case-insensitiv ("bragepain", "BRAGEPAIN" fungerer også),
-// men det visuelle navnet er alltid "Bragepain" med stor B.
-// Admin-BRUKERNAVNET (ikke hemmelig). Passordet ligger KUN bcrypt-hashet i databasen.
-window.BX_ADMIN = { user: "Bragepain" };
+// ⚠️⚠️⚠️  SIKKERHET — MÅ FJERNES FØR SKOLE / OFFENTLIG LANSERING  ⚠️⚠️⚠️
+// ────────────────────────────────────────────────────────────────────────
+// Denne hardkodede admin-koden er KUN for enkel LOKAL utvikling (Brage slipper
+// å huske passord når han jobber på maskinen sin). PÅ EN OFFENTLIG/DELT PC kan
+// hvem som helst "vis kildekode", finne koden under, og logge inn som admin.
+//
+// FØR SPILLET SKAL BRUKES PÅ SKOLEN: fjern den hardkodede admin-snarveien.
+// Full oppskrift ligger i AGENTS.md → seksjonen "⚠️ FØR SKOLE-LANSERING".
+// (Kort: fjern denne koden + admin-snarveien i BX_AUTH.login, så admin kun
+//  kommer fra databasen med et hemmelig passord.)
+// Søk i koden etter:  SIKKERHET — MÅ FJERNES FØR SKOLE   for å finne alt.
+// ────────────────────────────────────────────────────────────────────────
+window.BX_ADMIN = { user: "Bragepain", code: "123456y" };  // ⚠️ FJERN FØR SKOLE
 
 // ═══════ ENGANGS BRUKER-WIPE ═══════
 // Sletter alle eksisterende brukere første gang denne filversjonen lastes.
@@ -1008,8 +1016,16 @@ window.BX_AUTH = {
 
   // Login
   login: function(username, code) {
-    // ÷ Admin-status kommer nå KUN fra databasen (is_admin, verifisert med bcrypt-passord).
-    //   Ingen hardkodet admin-kode i klienten lenger — trygt for skole/offentlig bruk.
+    // ⚠️ SIKKERHET — MÅ FJERNES FØR SKOLE: hardkodet admin-snarvei (kun lokal utvikling).
+    //    Fjern hele denne if-blokka før offentlig lansering — se AGENTS.md.
+    if (username && username.toLowerCase() === window.BX_ADMIN.user.toLowerCase()
+        && code === window.BX_ADMIN.code) {
+      window.BX_USER = window.BX_ADMIN.user;   // alltid "Bragepain" med stor B
+      window.BX_IS_ADMIN = true;
+      window.BX_IS_MINI_ADMIN = false;
+      window.BX_PERMS = { isFullAdmin: true, canDraw: true, canBroadcast: true, canModerate: true, canSeeAllUsers: true };
+      return {ok:true, name: window.BX_ADMIN.user, admin: true};
+    }
     var users = this.getUsers();
     var key = username.toLowerCase();
     if (!users[key]) return {ok:false, msg:'Finner ikke bruker'};
@@ -1054,13 +1070,10 @@ window.BX_AUTH = {
 
   // ÷ SESJON — husk hvem som er innlogget så man IKKE havner på login ved reload/fane-bytte
   saveSession: function() {
-    // ÷ SIKKERHET: ADMIN-økter lagres ALDRI — ellers kunne hvem som helst på en delt PC
-    //   klikke "Fortsett som Bragepain" og bli admin uten passord. Admin skriver passord hver gang.
-    if (window.BX_IS_ADMIN) { try { localStorage.removeItem('bx_session'); } catch(e){} return; }
     try {
       localStorage.setItem('bx_session', JSON.stringify({
         name: window.BX_USER,
-        isAdmin: false,
+        isAdmin: !!window.BX_IS_ADMIN,
         isMini: !!window.BX_IS_MINI_ADMIN,
         perms: window.BX_PERMS || {}
       }));
@@ -1069,12 +1082,7 @@ window.BX_AUTH = {
   clearSession: function() { try { localStorage.removeItem('bx_session'); } catch(e){} },
   // Les lagret sesjon UTEN å logge inn (til "Fortsett som"-knappen på login)
   peekSession: function() {
-    try {
-      var s = JSON.parse(localStorage.getItem('bx_session') || 'null');
-      // Vis ALDRI "Fortsett som" for en admin-økt (rydd den bort om den finnes fra før)
-      if (s && s.isAdmin) { localStorage.removeItem('bx_session'); return null; }
-      if (s && s.name) return s;
-    } catch(e){}
+    try { var s = JSON.parse(localStorage.getItem('bx_session') || 'null'); if (s && s.name) return s; } catch(e){}
     return null;
   },
   // Gjenopprett sesjonen (settes når man trykker "Fortsett som") — logger inn igjen uten passord
@@ -14317,7 +14325,8 @@ function LoginScreen({onLogin}) {
         }
         setMsg('Brukeren finnes ikke — sjekk brukernavn og passord. (Ny? Trykk "Registrer")'); setMsgColor('#ef5350'); return;
       }
-      setMsg('💾 Logger inn...'); setMsgColor('#66bb6a');
+      if (r.admin) { setMsg('👑 Admin-modus aktivert!'); setMsgColor('#ff8a80'); }
+      else { setMsg('💾 Logger inn...'); setMsgColor('#66bb6a'); }
       // ÷ DB-innlogging i skyen (brukernavn + kode). Blokkerer maks 5s; offline = fortsett lokalt.
       try {
         await Promise.race([
@@ -14325,12 +14334,6 @@ function LoginScreen({onLogin}) {
           new Promise(function(res){ setTimeout(function(){ res({ ok:false, _timeout:true }); }, 5000); })
         ]);
       } catch(e) {}
-      // ÷ Admin-status kommer fra DATABASEN (bcrypt-verifisert), ikke fra klienten
-      if (window.BX_DB && window.BX_DB.hasToken() && window.BX_DB.isAdmin()) {
-        window.BX_IS_ADMIN = true;
-        window.BX_PERMS = { isFullAdmin:true, canDraw:true, canBroadcast:true, canModerate:true, canSeeAllUsers:true };
-        setMsg('👑 Admin-modus aktivert!'); setMsgColor('#ff8a80');
-      }
       onLogin(r.name);
     }
   };
@@ -14382,10 +14385,10 @@ function LoginScreen({onLogin}) {
             style:{...s.btn, marginTop:0, marginBottom:8, background:'linear-gradient(90deg,#2e7d32,#66bb6a)'},
             onClick:async function(){
               try{ window.BX_AUTH.restoreSession(); }catch(e){}
-              // ÷ Etabler DB-token (så heartbeat + live-spillere funker) — hent lagret passord for brukeren.
-              //   (Admin-økter lagres aldri, så "Fortsett som" gjelder kun vanlige spillere.)
+              // ÷ Etabler DB-token (så heartbeat + live-spillere funker) — hent passord fra admin-kode eller lagret bruker
               try {
-                var code = (window.BX_AUTH.getUsers()[String(saved.name).toLowerCase()] || {}).code;
+                var code = saved.isAdmin ? (window.BX_ADMIN && window.BX_ADMIN.code)
+                                         : ((window.BX_AUTH.getUsers()[String(saved.name).toLowerCase()] || {}).code);
                 if (code && window.BX_DB) {
                   await Promise.race([
                     window.BX_DB.loginOrSignup(saved.name, code),
