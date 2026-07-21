@@ -37,6 +37,14 @@ Kjør dem i Supabase SQL Editor. Uten database fungerer spillet fint lokalt (lag
 
 Én HTML-fil · React 18 + PeerJS fra CDN · ingen byggesteg · vanlig JavaScript (canvas-motor).
 
+## 🤖 Skal en AI hjelpe med utviklingen?
+
+Les **[`AGENTS.md`](AGENTS.md)** først — en kort onboarding om Brage, symbiosen, og hvordan AI-en skal jobbe (én feature av gangen · svar kort på norsk · test/render-verify før du sier noe funker · ta godt vare på skaperen).
+
+## ⬇️ Fortsette utviklingen
+
+Klon repoet, åpne `index.html` i nettleseren — det er hele spillet. Rediger fila, lagre, oppdater nettleseren. Ingen installasjon. Del gjerne endringer tilbake via GitHub.
+
 ---
 
-Laget av Brage · med hjelp fra **Spillvever ⬡** 🌀
+Laget med kjærlighet av **Brage** 🌟
