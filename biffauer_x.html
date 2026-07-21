@@ -1060,10 +1060,13 @@ window.BX_AUTH = {
 
   // ÷ SESJON — husk hvem som er innlogget så man IKKE havner på login ved reload/fane-bytte
   saveSession: function() {
+    // ÷ SIKKERHET: ADMIN-økter lagres ALDRI — ellers kunne hvem som helst på en delt PC
+    //   klikke "Fortsett som Bragepain" og bli admin uten passord. Admin skriver passord hver gang.
+    if (window.BX_IS_ADMIN) { try { localStorage.removeItem('bx_session'); } catch(e){} return; }
     try {
       localStorage.setItem('bx_session', JSON.stringify({
         name: window.BX_USER,
-        isAdmin: !!window.BX_IS_ADMIN,
+        isAdmin: false,
         isMini: !!window.BX_IS_MINI_ADMIN,
         perms: window.BX_PERMS || {}
       }));
@@ -1072,7 +1075,12 @@ window.BX_AUTH = {
   clearSession: function() { try { localStorage.removeItem('bx_session'); } catch(e){} },
   // Les lagret sesjon UTEN å logge inn (til "Fortsett som"-knappen på login)
   peekSession: function() {
-    try { var s = JSON.parse(localStorage.getItem('bx_session') || 'null'); if (s && s.name) return s; } catch(e){}
+    try {
+      var s = JSON.parse(localStorage.getItem('bx_session') || 'null');
+      // Vis ALDRI "Fortsett som" for en admin-økt (rydd den bort om den finnes fra før)
+      if (s && s.isAdmin) { localStorage.removeItem('bx_session'); return null; }
+      if (s && s.name) return s;
+    } catch(e){}
     return null;
   },
   // Gjenopprett sesjonen (settes når man trykker "Fortsett som") — logger inn igjen uten passord
