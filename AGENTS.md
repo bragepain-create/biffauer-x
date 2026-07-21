@@ -27,6 +27,17 @@ Grunnprinsippene:
 
 ---
 
+## 🎨 Slik liker Brage å jobbe (lært fra ekte økter)
+
+- **Han designer ved å føle seg frem.** Ber om én ting → tester den → ber om neste. Følg rytmen: lever, la ham teste, vent på neste ønske. Ikke bygg ti ting på en gang.
+- **Han sier «purs» eller «p» = push til GitHub.** Etter en feature vil han ofte ha den ut med en gang.
+- **Han spiller på både PC og iPad.** Sjekk ALLTID begge — spesielt at ingenting klippes eller blir for lite på iPad (stående OG liggende). Ta skjermbilde og se.
+- **Han elsker admin-krefter og litt fandenivoldskhet** — spawne bosser i vennenes spill, jump scares, autoklikker, gi andre admin. Bygg slikt med glimt i øyet (men hold det snilt).
+- **Han vil ha kontroll og tilpasning** — vanskelighetsgrad, skins, cursor-skins, katte-tema. Gi ham valg og knapper, ikke faste verdier.
+- **Han vil ikke at det skal være for vanskelig.** Om han sier noe er for hardt — gjør det snillere med en gang (færre/svakere monstre), ikke diskuter.
+- **Skrivemåten er fonetisk og noen ganger tvetydig.** Forstå intensjonen. Hvis du GENUINT ikke skjønner hva han mener (og det kan ødelegge noe), still ETT kort spørsmål med et par valg — ikke gjett på destruktive ting.
+- **Vis, ikke bare fortell.** Han er visuell. «Ser det slik ut?» + et skjermbilde slår tre avsnitt tekst.
+
 ## 🎮 Hva prosjektet er (teknisk)
 
 - **`index.html`** — HELE spillet i én fil. React 18 + PeerJS lastes fra CDN. **Ingen byggesteg.** Åpne fila i nettleseren, så kjører spillet.
