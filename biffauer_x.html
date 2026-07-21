@@ -922,7 +922,8 @@ window.BX_IS_ADMIN = false; // satt til true for admin-brukeren
 // Brukernavn "Bragepain" + kode "1235" gir admin-rettigheter.
 // Innlogging er case-insensitiv ("bragepain", "BRAGEPAIN" fungerer også),
 // men det visuelle navnet er alltid "Bragepain" med stor B.
-window.BX_ADMIN = { user: "Bragepain", code: "123456y" };
+// Admin-BRUKERNAVNET (ikke hemmelig). Passordet ligger KUN bcrypt-hashet i databasen.
+window.BX_ADMIN = { user: "Bragepain" };
 
 // ═══════ ENGANGS BRUKER-WIPE ═══════
 // Sletter alle eksisterende brukere første gang denne filversjonen lastes.
@@ -1007,15 +1008,8 @@ window.BX_AUTH = {
 
   // Login
   login: function(username, code) {
-    // ÷ Admin-snarvei: Bragepain / 1235 (case-insensitiv brukernavn)
-    if (username && username.toLowerCase() === window.BX_ADMIN.user.toLowerCase()
-        && code === window.BX_ADMIN.code) {
-      window.BX_USER = window.BX_ADMIN.user;   // alltid "Bragepain" med stor B
-      window.BX_IS_ADMIN = true;
-      window.BX_IS_MINI_ADMIN = false;
-      window.BX_PERMS = { isFullAdmin: true, canDraw: true, canBroadcast: true, canModerate: true, canSeeAllUsers: true };
-      return {ok:true, name: window.BX_ADMIN.user, admin: true};
-    }
+    // ÷ Admin-status kommer nå KUN fra databasen (is_admin, verifisert med bcrypt-passord).
+    //   Ingen hardkodet admin-kode i klienten lenger — trygt for skole/offentlig bruk.
     var users = this.getUsers();
     var key = username.toLowerCase();
     if (!users[key]) return {ok:false, msg:'Finner ikke bruker'};
@@ -14323,8 +14317,7 @@ function LoginScreen({onLogin}) {
         }
         setMsg('Brukeren finnes ikke — sjekk brukernavn og passord. (Ny? Trykk "Registrer")'); setMsgColor('#ef5350'); return;
       }
-      if (r.admin) { setMsg('👑 Admin-modus aktivert!'); setMsgColor('#ff8a80'); }
-      else { setMsg('💾 Logger inn...'); setMsgColor('#66bb6a'); }
+      setMsg('💾 Logger inn...'); setMsgColor('#66bb6a');
       // ÷ DB-innlogging i skyen (brukernavn + kode). Blokkerer maks 5s; offline = fortsett lokalt.
       try {
         await Promise.race([
@@ -14332,6 +14325,12 @@ function LoginScreen({onLogin}) {
           new Promise(function(res){ setTimeout(function(){ res({ ok:false, _timeout:true }); }, 5000); })
         ]);
       } catch(e) {}
+      // ÷ Admin-status kommer fra DATABASEN (bcrypt-verifisert), ikke fra klienten
+      if (window.BX_DB && window.BX_DB.hasToken() && window.BX_DB.isAdmin()) {
+        window.BX_IS_ADMIN = true;
+        window.BX_PERMS = { isFullAdmin:true, canDraw:true, canBroadcast:true, canModerate:true, canSeeAllUsers:true };
+        setMsg('👑 Admin-modus aktivert!'); setMsgColor('#ff8a80');
+      }
       onLogin(r.name);
     }
   };
@@ -14383,10 +14382,10 @@ function LoginScreen({onLogin}) {
             style:{...s.btn, marginTop:0, marginBottom:8, background:'linear-gradient(90deg,#2e7d32,#66bb6a)'},
             onClick:async function(){
               try{ window.BX_AUTH.restoreSession(); }catch(e){}
-              // ÷ Etabler DB-token (så heartbeat + live-spillere funker) — hent passord fra admin-kode eller lagret bruker
+              // ÷ Etabler DB-token (så heartbeat + live-spillere funker) — hent lagret passord for brukeren.
+              //   (Admin-økter lagres aldri, så "Fortsett som" gjelder kun vanlige spillere.)
               try {
-                var code = saved.isAdmin ? (window.BX_ADMIN && window.BX_ADMIN.code)
-                                         : ((window.BX_AUTH.getUsers()[String(saved.name).toLowerCase()] || {}).code);
+                var code = (window.BX_AUTH.getUsers()[String(saved.name).toLowerCase()] || {}).code;
                 if (code && window.BX_DB) {
                   await Promise.race([
                     window.BX_DB.loginOrSignup(saved.name, code),
